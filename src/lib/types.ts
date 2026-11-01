@@ -18,7 +18,8 @@ export type LeadSource =
   | "Trade show"
   | "Cold call"
   | "Partner"
-  | "Social";
+  | "Social"
+  | "Google Sheets";
 
 export type BusinessType = "Seller" | "Installer" | "Both";
 
@@ -75,6 +76,11 @@ export interface Company {
   fitScore: number;
   owner: string;
   notes: string;
+  instagramUrl: string;
+  facebookUrl: string;
+  linkedinUrl: string;
+  /** Reference "ideal customer" site from the lead-gen team's sheet (B2 Phase 1). */
+  perfectClientUrl: string;
 }
 
 export interface Contact {
@@ -85,6 +91,9 @@ export interface Contact {
   email: string;
   phone: string;
   owner: string;
+  linkedinUrl: string;
+  instagramUrl: string;
+  facebookUrl: string;
 }
 
 export interface Task {
@@ -130,6 +139,7 @@ export const LEAD_SOURCES: LeadSource[] = [
   "Cold call",
   "Partner",
   "Social",
+  "Google Sheets",
 ];
 
 export const BUSINESS_TYPES: BusinessType[] = ["Seller", "Installer", "Both"];

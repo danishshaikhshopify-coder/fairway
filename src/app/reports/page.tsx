@@ -22,7 +22,6 @@ import { useCrm } from "@/lib/crm-store";
 import { formatCurrency, formatFullCurrency } from "@/lib/format";
 import {
   LEAD_SOURCES,
-  OWNERS,
   PIPELINE_LABELS,
   PIPELINE_STAGES,
   type PipelineStage,
@@ -43,7 +42,7 @@ function StatRow({ label, value, hint }: { label: string; value: string; hint?: 
 }
 
 export default function ReportsPage() {
-  const { leads } = useCrm();
+  const { leads, owners } = useCrm();
 
   const funnel = useMemo(() => {
     const counts = PIPELINE_STAGES.map((stage) => ({
@@ -110,7 +109,11 @@ export default function ReportsPage() {
   }, [leads]);
 
   const byOwner = useMemo(() => {
-    return OWNERS.map((owner) => {
+  const ownerList = owners.length
+    ? owners
+    : [...new Set(leads.map((l) => l.owner).filter(Boolean))];
+  return ownerList
+    .map((owner) => {
       const own = leads.filter((l) => l.owner === owner);
       return {
         owner,
@@ -125,8 +128,9 @@ export default function ReportsPage() {
           ? Math.round(own.reduce((sum, l) => sum + l.score, 0) / own.length)
           : 0,
       };
-    }).filter((row) => row.leads > 0);
-  }, [leads]);
+    })
+    .filter((row) => row.leads > 0);
+  }, [leads, owners]);
 
   const maxSourceShare = Math.max(...sources.map((s) => s.share), 1);
   const maxValue = Math.max(...valueByStage.map((r) => r.value), 1);

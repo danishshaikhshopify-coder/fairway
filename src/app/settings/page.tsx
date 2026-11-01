@@ -25,11 +25,13 @@ import {
   savePreferences,
 } from "@/lib/preferences";
 import { useAuth } from "@/lib/auth-context";
-import { getSupabase } from "@/lib/supabase/client";
+import { getSupabase, isLiveMode } from "@/lib/supabase/client";
+import { useCrm } from "@/lib/crm-store";
 import {
   loadNotificationPrefs,
   saveNotificationPrefs,
 } from "@/lib/supabase/repository";
+import { IntegrationsPanel } from "@/components/crm/integrations-panel";
 
 const TIMEZONES = [
   "America/New_York",
@@ -64,6 +66,7 @@ function SaveBar({ onSave }: { onSave: () => void }) {
 export default function SettingsPage() {
   const mounted = useSyncExternalStore(subscribeNoop, getIsClient, getIsServer);
   const { theme, setTheme } = useTheme();
+  const { owners } = useCrm();
 
   const [profile, setProfile] = useState({
     name: "Alex Rivera",
@@ -80,7 +83,7 @@ export default function SettingsPage() {
   const [notifications, setNotifications] = useState(DEFAULT_NOTIFICATION_PREFS);
 
   const [preferences, setPreferences] = useState({
-    defaultOwner: OWNERS[0],
+    defaultOwner: isLiveMode() ? "" : OWNERS[0],
     currency: "USD",
     followUpDays: "3",
   });
@@ -190,6 +193,7 @@ export default function SettingsPage() {
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="crm">CRM</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -368,11 +372,15 @@ export default function SettingsPage() {
                     {preferences.defaultOwner}
                   </SelectTrigger>
                   <SelectContent>
-                    {OWNERS.map((owner) => (
-                      <SelectItem key={owner} value={owner}>
-                        {owner}
-                      </SelectItem>
-                    ))}
+                    {owners.length === 0 ? (
+                      <SelectItem value="">Unassigned</SelectItem>
+                    ) : (
+                      owners.map((owner) => (
+                        <SelectItem key={owner} value={owner}>
+                          {owner}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -412,6 +420,10 @@ export default function SettingsPage() {
               <SaveBar onSave={saveCrmPreferences} />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations">
+          <IntegrationsPanel />
         </TabsContent>
       </Tabs>
     </div>

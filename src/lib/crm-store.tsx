@@ -29,6 +29,7 @@ import {
   MOCK_CONTACTS,
   MOCK_LEADS,
   MOCK_TASKS,
+  DEMO_OWNERS,
 } from "@/lib/mock-data";
 import { todayIso } from "@/lib/format";
 import type {
@@ -70,6 +71,8 @@ interface CrmContextValue {
   contacts: Contact[];
   tasks: Task[];
   activities: Activity[];
+  /** Owner display names available in the current workspace (demo or live). */
+  owners: string[];
   /** true while a live-mode first load is in flight. */
   loading: boolean;
   addLead: (lead: New<Lead>) => void;
@@ -124,6 +127,9 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<Activity[]>(() =>
     isLiveMode() ? [] : MOCK_ACTIVITIES,
   );
+  const [owners, setOwners] = useState<string[]>(() =>
+    isLiveMode() ? [] : [...DEMO_OWNERS],
+  );
   // Seeded from the mode rather than set inside the effect: in live mode the
   // first render is genuinely "loading" (state is still empty until the fetch
   // lands), in demo mode there is never a load at all.
@@ -166,6 +172,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         setContacts(ct);
         setTasks(t);
         setActivities(a);
+        setOwners(Array.from(ctx.directory.membersByName.keys()).sort());
       } catch (err) {
         // Leave the CRM empty rather than showing demo rows the user could try
         // to edit, and make the cause visible in the console.
@@ -353,6 +360,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       contacts,
       tasks,
       activities,
+      owners,
       loading,
       addLead,
       addCompany,
@@ -377,6 +385,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       contacts,
       tasks,
       activities,
+      owners,
       loading,
       addLead,
       addCompany,

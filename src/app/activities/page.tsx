@@ -26,6 +26,7 @@ import { EmptyState } from "@/components/crm/empty-state";
 import { ActivityTypeBadge } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
+import { isLiveMode } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
 import {
   ACTIVITY_TYPES,
@@ -48,7 +49,7 @@ const emptyActivityForm = {
   type: "call" as ActivityType,
   subject: "",
   relatedTo: "",
-  owner: OWNERS[0],
+  owner: isLiveMode() ? "" : OWNERS[0],
   date: "",
 };
 
@@ -63,7 +64,7 @@ function validateActivityForm(form: ActivityForm): Record<string, string> {
 }
 
 export default function ActivitiesPage() {
-  const { activities, addActivity, removeActivity, companies, contacts, leads } =
+  const { activities, addActivity, removeActivity, owners, companies, contacts, leads } =
     useCrm();
 
   // Suggestions for the "Related to" free-text field: real record names.
@@ -326,11 +327,15 @@ export default function ActivitiesPage() {
                     {form.owner}
                   </SelectTrigger>
                   <SelectContent>
-                    {OWNERS.map((owner) => (
-                      <SelectItem key={owner} value={owner}>
-                        {owner}
-                      </SelectItem>
-                    ))}
+                    {owners.length === 0 ? (
+                      <SelectItem value="">Unassigned</SelectItem>
+                    ) : (
+                      owners.map((owner) => (
+                        <SelectItem key={owner} value={owner}>
+                          {owner}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               )}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Mail, Phone, Plus, RotateCcw, User } from "lucide-react";
+import { Link2, Mail, Phone, Plus, RotateCcw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -42,10 +42,16 @@ import { EmptyState } from "@/components/crm/empty-state";
 import { LeadStatusBadge } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
+import { isLiveMode } from "@/lib/supabase/client";
 import { formatFullCurrency } from "@/lib/format";
 import { OWNERS, type Contact } from "@/lib/types";
 
 const ALL = "all";
+
+/** Social URLs are free text, so only add a scheme when the user did not. */
+function websiteHref(url: string): string {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`;
+}
 
 const emptyContactForm = {
   name: "",
@@ -53,7 +59,10 @@ const emptyContactForm = {
   title: "",
   email: "",
   phone: "",
-  owner: OWNERS[0],
+  owner: isLiveMode() ? "" : OWNERS[0],
+  linkedinUrl: "",
+  instagramUrl: "",
+  facebookUrl: "",
 };
 
 type ContactForm = typeof emptyContactForm;
@@ -72,7 +81,7 @@ function validateContactForm(form: ContactForm): Record<string, string> {
 }
 
 export default function ContactsPage() {
-  const { contacts, companies, leads, addContact, updateContact, updateLead, removeContact } =
+  const { contacts, companies, leads, owners, addContact, updateContact, updateLead, removeContact } =
     useCrm();
 
   const [search, setSearch] = useState("");
@@ -195,6 +204,9 @@ export default function ContactsPage() {
       email: form.email.trim(),
       phone: form.phone.trim(),
       owner: form.owner,
+      linkedinUrl: form.linkedinUrl.trim(),
+      instagramUrl: form.instagramUrl.trim(),
+      facebookUrl: form.facebookUrl.trim(),
     };
     if (editingId) {
       const previous = contacts.find((c) => c.id === editingId);
@@ -229,6 +241,9 @@ export default function ContactsPage() {
       email: contact.email,
       phone: contact.phone,
       owner: contact.owner,
+      linkedinUrl: contact.linkedinUrl,
+      instagramUrl: contact.instagramUrl,
+      facebookUrl: contact.facebookUrl,
     });
     setErrors({});
     setEditingId(contact.id);
@@ -467,6 +482,54 @@ export default function ContactsPage() {
                       <p>{detailContact.phone || "No phone on file"}</p>
                     </div>
                   </div>
+                  {detailContact.linkedinUrl ? (
+                    <div className="flex items-start gap-3 text-sm">
+                      <Link2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">LinkedIn</p>
+                        <a
+                          href={websiteHref(detailContact.linkedinUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-words text-primary underline-offset-4 hover:underline"
+                        >
+                          {detailContact.linkedinUrl}
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+                  {detailContact.instagramUrl ? (
+                    <div className="flex items-start gap-3 text-sm">
+                      <Link2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Instagram</p>
+                        <a
+                          href={websiteHref(detailContact.instagramUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-words text-primary underline-offset-4 hover:underline"
+                        >
+                          {detailContact.instagramUrl}
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+                  {detailContact.facebookUrl ? (
+                    <div className="flex items-start gap-3 text-sm">
+                      <Link2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Facebook</p>
+                        <a
+                          href={websiteHref(detailContact.facebookUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-words text-primary underline-offset-4 hover:underline"
+                        >
+                          {detailContact.facebookUrl}
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <Separator />
@@ -587,6 +650,36 @@ export default function ContactsPage() {
                 />
               )}
             </FormField>
+            <FormField label="LinkedIn">
+              {(p) => (
+                <Input
+                  {...p}
+                  placeholder="https://linkedin.com/in/owner"
+                  value={form.linkedinUrl}
+                  onChange={(e) => setField("linkedinUrl", e.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label="Instagram">
+              {(p) => (
+                <Input
+                  {...p}
+                  placeholder="https://instagram.com/owner"
+                  value={form.instagramUrl}
+                  onChange={(e) => setField("instagramUrl", e.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label="Facebook">
+              {(p) => (
+                <Input
+                  {...p}
+                  placeholder="https://facebook.com/owner"
+                  value={form.facebookUrl}
+                  onChange={(e) => setField("facebookUrl", e.target.value)}
+                />
+              )}
+            </FormField>
             <FormField label="Owner" required>
               {(p) => (
                 <Select
@@ -597,11 +690,15 @@ export default function ContactsPage() {
                     {form.owner}
                   </SelectTrigger>
                   <SelectContent>
-                    {OWNERS.map((owner) => (
-                      <SelectItem key={owner} value={owner}>
-                        {owner}
-                      </SelectItem>
-                    ))}
+                    {owners.length === 0 ? (
+                      <SelectItem value="">Unassigned</SelectItem>
+                    ) : (
+                      owners.map((owner) => (
+                        <SelectItem key={owner} value={owner}>
+                          {owner}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               )}

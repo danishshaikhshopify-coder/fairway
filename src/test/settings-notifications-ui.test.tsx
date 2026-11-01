@@ -18,6 +18,7 @@ const supa = vi.hoisted(() => ({
   userId: "user-1" as string | null,
   loadNotificationPrefs: vi.fn(),
   saveNotificationPrefs: vi.fn(),
+  loadWorkspaceContext: vi.fn(),
 }));
 
 vi.mock("@/lib/auth-context", () => ({
@@ -36,10 +37,17 @@ vi.mock("@/lib/supabase/client", () => ({
 vi.mock("@/lib/supabase/repository", () => ({
   loadNotificationPrefs: (...args: unknown[]) => supa.loadNotificationPrefs(...args),
   saveNotificationPrefs: (...args: unknown[]) => supa.saveNotificationPrefs(...args),
+  loadWorkspaceContext: (...args: unknown[]) => supa.loadWorkspaceContext(...args),
+  loadLeads: () => Promise.resolve([]),
+  loadCompanies: () => Promise.resolve([]),
+  loadContacts: () => Promise.resolve([]),
+  loadTasks: () => Promise.resolve([]),
+  loadActivities: () => Promise.resolve([]),
 }));
 
 import { toast } from "sonner";
 import SettingsPage from "@/app/settings/page";
+import { CrmProvider } from "@/lib/crm-store";
 
 function notifPanel(): HTMLElement {
   fireEvent.click(screen.getByRole("tab", { name: "Notifications" }));
@@ -54,6 +62,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   supa.live = true;
   supa.userId = "user-1";
+  supa.loadWorkspaceContext.mockResolvedValue({
+    workspaceId: "ws-1",
+    directory: { membersByName: new Map(), sourcesByName: new Map() },
+  });
   supa.loadNotificationPrefs.mockResolvedValue({
     newLeadAlerts: true,
     dailyDigest: true,
@@ -72,7 +84,7 @@ describe("Settings → Notifications (live mode)", () => {
       weeklyReport: true,
     });
 
-    render(<SettingsPage />);
+    render(<CrmProvider><SettingsPage /></CrmProvider>);
     const panel = notifPanel();
 
     await waitFor(() =>
@@ -88,7 +100,7 @@ describe("Settings → Notifications (live mode)", () => {
   });
 
   it("saves edited switches to the profiles columns", async () => {
-    render(<SettingsPage />);
+    render(<CrmProvider><SettingsPage /></CrmProvider>);
     const panel = notifPanel();
 
     fireEvent.click(switch_(panel, "Weekly pipeline report"));
@@ -112,7 +124,7 @@ describe("Settings → Notifications (live mode)", () => {
     supa.saveNotificationPrefs.mockRejectedValue(new Error("network down"));
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    render(<SettingsPage />);
+    render(<CrmProvider><SettingsPage /></CrmProvider>);
     const panel = notifPanel();
     fireEvent.click(within(panel).getByRole("button", { name: "Save changes" }));
 
@@ -129,7 +141,7 @@ describe("Settings → Notifications (live mode)", () => {
     supa.userId = null;
     supa.live = false;
 
-    render(<SettingsPage />);
+    render(<CrmProvider><SettingsPage /></CrmProvider>);
     const panel = notifPanel();
     fireEvent.click(within(panel).getByRole("button", { name: "Save changes" }));
 

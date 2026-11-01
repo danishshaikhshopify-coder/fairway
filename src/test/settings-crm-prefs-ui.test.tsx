@@ -14,6 +14,7 @@ vi.mock("next-themes", () => ({
 
 import { toast } from "sonner";
 import SettingsPage from "@/app/settings/page";
+import { CrmProvider } from "@/lib/crm-store";
 
 const KEY = "fairway.prefs.v1";
 
@@ -29,7 +30,7 @@ beforeEach(() => {
 
 describe("Settings → CRM preferences", () => {
   it("starts at the documented defaults when nothing is saved", () => {
-    render(<SettingsPage />);
+    render(<CrmProvider><SettingsPage /></CrmProvider>);
     const panel = crmPanel();
 
     const days = within(panel).getByLabelText(
@@ -42,7 +43,7 @@ describe("Settings → CRM preferences", () => {
   });
 
   it("persists edits to localStorage and confirms with a toast", () => {
-    render(<SettingsPage />);
+    render(<CrmProvider><SettingsPage /></CrmProvider>);
     const panel = crmPanel();
 
     fireEvent.change(
@@ -73,7 +74,7 @@ describe("Settings → CRM preferences", () => {
       }),
     );
 
-    render(<SettingsPage />);
+    render(<CrmProvider><SettingsPage /></CrmProvider>);
     const panel = crmPanel();
 
     // Loaded one tick after hydration (avoids a prerender mismatch).

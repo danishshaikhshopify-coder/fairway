@@ -1,0 +1,4 @@
+-- Intentionally empty: Fairway CRM seeds per-workspace defaults (pipeline stages,
+-- lead sources, profile) via the `handle_new_user()` trigger on signup. No
+-- fabricated demo rows are seeded into any workspace. Keep this file present so
+-- `supabase/config.toml`'s `[db.seed] sql_paths` resolves.

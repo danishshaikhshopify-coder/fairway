@@ -68,6 +68,7 @@ import {
 } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
+import { isLiveMode } from "@/lib/supabase/client";
 import { findDuplicateLead, validateLeadForm, type LeadForm } from "@/lib/lead-form";
 import { loadPreferences } from "@/lib/preferences";
 import {
@@ -115,7 +116,7 @@ const emptyLeadForm = {
   value: "",
   score: "50",
   fitScore: "50",
-  owner: OWNERS[0],
+  owner: isLiveMode() ? "" : OWNERS[0],
   nextFollowUp: "",
 };
 
@@ -197,7 +198,7 @@ function DetailRow({
 }
 
 export default function LeadsPage() {
-  const { leads, addLead, updateLead, setLeadStatuses, removeLead } = useCrm();
+  const { leads, owners, addLead, updateLead, setLeadStatuses, removeLead } = useCrm();
   const today = useToday();
 
   const [search, setSearch] = useState("");
@@ -481,6 +482,11 @@ export default function LeadsPage() {
       .catch(() => toast.error("Could not read that file."));
   }
 
+  // NOTE: CSV import is optimistic and per-row. In live mode each valid row is
+  // persisted via addLead (background insert), but there is no transactional
+  // rollback if a row fails, and no `lead_imports` audit row is written yet.
+  // Failed rows are reported to the user but already-attempted inserts may
+  // remain. Treat this as non-atomic until a server-side import endpoint exists.
   function confirmImport() {
     if (!importResult) return;
     importResult.valid.forEach((row) => {
@@ -1137,11 +1143,15 @@ export default function LeadsPage() {
                     {form.owner}
                   </SelectTrigger>
                   <SelectContent>
-                    {OWNERS.map((owner) => (
-                      <SelectItem key={owner} value={owner}>
-                        {owner}
-                      </SelectItem>
-                    ))}
+                    {owners.length === 0 ? (
+                      <SelectItem value="">Unassigned</SelectItem>
+                    ) : (
+                      owners.map((owner) => (
+                        <SelectItem key={owner} value={owner}>
+                          {owner}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               )}

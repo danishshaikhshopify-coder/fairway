@@ -69,11 +69,12 @@ const LEAD_COLUMNS: any =
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const COMPANY_COLUMNS: any =
   "id, name, business_type, city, region, country, website, email, phone, " +
-  `fit_score, notes, owner:${ownerEmbed(COMPANY_OWNER)}`;
+  "fit_score, notes, instagram_url, facebook_url, linkedin_url, perfect_client_url, " +
+  `owner:${ownerEmbed(COMPANY_OWNER)}`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CONTACT_COLUMNS: any =
-  "id, name, title, email, phone, " +
+  "id, name, title, email, phone, linkedin_url, instagram_url, facebook_url, " +
   `company:companies(name), owner:${ownerEmbed(CONTACT_OWNER)}`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -413,6 +414,10 @@ function blankCompany(): New<Company> {
     fitScore: 0,
     owner: "",
     notes: "",
+    instagramUrl: "",
+    facebookUrl: "",
+    linkedinUrl: "",
+    perfectClientUrl: "",
   };
 }
 
@@ -424,5 +429,8 @@ function blankContact(): New<Contact> {
     email: "",
     phone: "",
     owner: "",
+    linkedinUrl: "",
+    instagramUrl: "",
+    facebookUrl: "",
   };
 }

@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Globe, Mail, MapPin, Phone, Plus, RotateCcw } from "lucide-react";
+import {
+  Globe,
+  Link2,
+  Mail,
+  MapPin,
+  Phone,
+  Plus,
+  RotateCcw,
+  Target,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -46,6 +55,7 @@ import {
 } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
+import { isLiveMode } from "@/lib/supabase/client";
 import { formatFullCurrency } from "@/lib/format";
 import {
   BUSINESS_TYPES,
@@ -68,8 +78,12 @@ const emptyCompanyForm = {
   email: "",
   phone: "",
   fitScore: "60",
-  owner: OWNERS[0],
+  owner: isLiveMode() ? "" : OWNERS[0],
   notes: "",
+  instagramUrl: "",
+  facebookUrl: "",
+  linkedinUrl: "",
+  perfectClientUrl: "",
 };
 
 type CompanyForm = typeof emptyCompanyForm;
@@ -124,7 +138,7 @@ function DetailRow({
 }
 
 export default function CompaniesPage() {
-  const { companies, contacts, leads, addCompany, updateCompany, updateContact, updateLead, removeCompany, removeContact } =
+  const { companies, contacts, leads, owners, addCompany, updateCompany, updateContact, updateLead, removeCompany, removeContact } =
     useCrm();
 
   const [search, setSearch] = useState("");
@@ -252,6 +266,10 @@ export default function CompaniesPage() {
       fitScore: Number(form.fitScore),
       owner: form.owner,
       notes: form.notes.trim(),
+      instagramUrl: form.instagramUrl.trim(),
+      facebookUrl: form.facebookUrl.trim(),
+      linkedinUrl: form.linkedinUrl.trim(),
+      perfectClientUrl: form.perfectClientUrl.trim(),
     };
     if (editingId) {
       const previous = companies.find((c) => c.id === editingId);
@@ -294,6 +312,10 @@ export default function CompaniesPage() {
       fitScore: String(company.fitScore),
       owner: company.owner,
       notes: company.notes,
+      instagramUrl: company.instagramUrl,
+      facebookUrl: company.facebookUrl,
+      linkedinUrl: company.linkedinUrl,
+      perfectClientUrl: company.perfectClientUrl,
     });
     setErrors({});
     setEditingId(company.id);
@@ -568,6 +590,38 @@ export default function CompaniesPage() {
                   {detailCompany.phone ? (
                     <DetailRow icon={Phone} label="Phone" value={detailCompany.phone} />
                   ) : null}
+                  {detailCompany.instagramUrl ? (
+                    <DetailRow
+                      icon={Link2}
+                      label="Instagram"
+                      value={detailCompany.instagramUrl}
+                      href={websiteHref(detailCompany.instagramUrl)}
+                    />
+                  ) : null}
+                  {detailCompany.facebookUrl ? (
+                    <DetailRow
+                      icon={Link2}
+                      label="Facebook"
+                      value={detailCompany.facebookUrl}
+                      href={websiteHref(detailCompany.facebookUrl)}
+                    />
+                  ) : null}
+                  {detailCompany.linkedinUrl ? (
+                    <DetailRow
+                      icon={Link2}
+                      label="LinkedIn"
+                      value={detailCompany.linkedinUrl}
+                      href={websiteHref(detailCompany.linkedinUrl)}
+                    />
+                  ) : null}
+                  {detailCompany.perfectClientUrl ? (
+                    <DetailRow
+                      icon={Target}
+                      label="Perfect client reference"
+                      value={detailCompany.perfectClientUrl}
+                      href={websiteHref(detailCompany.perfectClientUrl)}
+                    />
+                  ) : null}
                 </div>
 
                 <Separator />
@@ -795,11 +849,15 @@ export default function CompaniesPage() {
                     {form.owner}
                   </SelectTrigger>
                   <SelectContent>
-                    {OWNERS.map((owner) => (
-                      <SelectItem key={owner} value={owner}>
-                        {owner}
-                      </SelectItem>
-                    ))}
+                    {owners.length === 0 ? (
+                      <SelectItem value="">Unassigned</SelectItem>
+                    ) : (
+                      owners.map((owner) => (
+                        <SelectItem key={owner} value={owner}>
+                          {owner}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               )}
@@ -812,6 +870,46 @@ export default function CompaniesPage() {
                   value={form.notes}
                   onChange={(e) => setField("notes", e.target.value)}
                   rows={3}
+                />
+              )}
+            </FormField>
+            <FormField label="Instagram">
+              {(p) => (
+                <Input
+                  {...p}
+                  placeholder="https://instagram.com/company"
+                  value={form.instagramUrl}
+                  onChange={(e) => setField("instagramUrl", e.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label="Facebook">
+              {(p) => (
+                <Input
+                  {...p}
+                  placeholder="https://facebook.com/company"
+                  value={form.facebookUrl}
+                  onChange={(e) => setField("facebookUrl", e.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label="LinkedIn">
+              {(p) => (
+                <Input
+                  {...p}
+                  placeholder="https://linkedin.com/company/company"
+                  value={form.linkedinUrl}
+                  onChange={(e) => setField("linkedinUrl", e.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label="Perfect client (reference URL)">
+              {(p) => (
+                <Input
+                  {...p}
+                  placeholder="https://example.com — an ideal-customer reference site"
+                  value={form.perfectClientUrl}
+                  onChange={(e) => setField("perfectClientUrl", e.target.value)}
                 />
               )}
             </FormField>

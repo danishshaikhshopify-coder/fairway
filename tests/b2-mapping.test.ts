@@ -241,6 +241,10 @@ test("companyToRow maps camelCase to snake_case and resolves owner", () => {
       fitScore: 91,
       owner: "J. Chen",
       notes: "Two bays",
+      instagramUrl: "",
+      facebookUrl: "",
+      linkedinUrl: "",
+      perfectClientUrl: "",
     },
     DIR,
   );
@@ -260,6 +264,9 @@ test("contactToRow resolves the company display name to a company id", () => {
       email: "dana@apexindoor.example",
       phone: "",
       owner: "A. Rivera",
+      linkedinUrl: "",
+      instagramUrl: "",
+      facebookUrl: "",
     },
     companyIds,
     DIR,
@@ -270,7 +277,17 @@ test("contactToRow resolves the company display name to a company id", () => {
 
 test("contactToRow nulls a company name that no longer exists", () => {
   const row = contactToRow(
-    { name: "Dana", company: "Gone Co", title: "", email: "", phone: "", owner: "" },
+    {
+      name: "Dana",
+      company: "Gone Co",
+      title: "",
+      email: "",
+      phone: "",
+      owner: "",
+      linkedinUrl: "",
+      instagramUrl: "",
+      facebookUrl: "",
+    },
     new Map(),
     DIR,
   );

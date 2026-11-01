@@ -109,6 +109,10 @@ export function rowToCompany(r: Record<string, unknown>): Company {
     fitScore: asNum(r.fit_score),
     owner: ownerName(r.owner),
     notes: asStr(r.notes),
+    instagramUrl: asStr(r.instagram_url),
+    facebookUrl: asStr(r.facebook_url),
+    linkedinUrl: asStr(r.linkedin_url),
+    perfectClientUrl: asStr(r.perfect_client_url),
   };
 }
 
@@ -124,6 +128,9 @@ export function rowToContact(r: Record<string, unknown>): Contact {
     email: asStr(r.email),
     phone: asStr(r.phone),
     owner: ownerName(r.owner),
+    linkedinUrl: asStr(r.linkedin_url),
+    instagramUrl: asStr(r.instagram_url),
+    facebookUrl: asStr(r.facebook_url),
   };
 }
 
@@ -232,6 +239,10 @@ export function companyToRow(
     fit_score: company.fitScore,
     notes: company.notes,
     owner_id: dir.membersByName.get(company.owner) ?? null,
+    instagram_url: company.instagramUrl || null,
+    facebook_url: company.facebookUrl || null,
+    linkedin_url: company.linkedinUrl || null,
+    perfect_client_url: company.perfectClientUrl || null,
   };
 }
 
@@ -247,6 +258,9 @@ export function contactToRow(
     email: contact.email || null,
     phone: contact.phone || null,
     owner_id: dir.membersByName.get(contact.owner) ?? null,
+    linkedin_url: contact.linkedinUrl || null,
+    instagram_url: contact.instagramUrl || null,
+    facebook_url: contact.facebookUrl || null,
   };
 }
 
@@ -316,6 +330,10 @@ const COMPANY_UI_TO_DB: Record<string, string> = {
   fitScore: "fit_score",
   notes: "notes",
   owner: "owner_id",
+  instagramUrl: "instagram_url",
+  facebookUrl: "facebook_url",
+  linkedinUrl: "linkedin_url",
+  perfectClientUrl: "perfect_client_url",
 };
 
 const CONTACT_UI_TO_DB: Record<string, string> = {
@@ -325,6 +343,9 @@ const CONTACT_UI_TO_DB: Record<string, string> = {
   email: "email",
   phone: "phone",
   owner: "owner_id",
+  linkedinUrl: "linkedin_url",
+  instagramUrl: "instagram_url",
+  facebookUrl: "facebook_url",
 };
 
 /**
