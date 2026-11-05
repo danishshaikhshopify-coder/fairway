@@ -82,6 +82,35 @@ test("mapRows maps socials, perfect client and insights from the real sheet head
   assert.equal(row.contact?.email, "dana@apex.example");
 });
 
+test("a URL in the company-name column becomes a bare-domain name with the URL kept as website", () => {
+  const values = [
+    HEADER,
+    [
+      "https://www.skytrakgolf.com/",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ],
+  ];
+  const result = mapRows(values);
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.rows.length, 1);
+  const row = result.rows[0];
+  assert.equal(row.company.name, "skytrakgolf.com");
+  assert.equal(row.company.website, "https://www.skytrakgolf.com/");
+  assert.equal(row.lead.company, "skytrakgolf.com");
+});
+
 test("a row with no company name is reported invalid, not silently dropped", () => {
   const values = [HEADER, ["", "", "", "", "", "Dana Reyes", "", "", "", "", "dana@apex.example", "", ""]];
   const result = mapRows(values);

@@ -343,6 +343,20 @@ function normaliseUrl(value: string, kind: "website" | "instagram" | "facebook" 
   return `https://${text}`;
 }
 
+// A company-name cell that is actually a URL (e.g. BACKUP_BEFORE_CRM's
+// "Client Abondant" column) gets a readable bare-domain name instead of the
+// full URL, with the URL itself kept as the company's website.
+function cleanCompanyName(raw: string): { name: string; website: string } {
+  const text = raw.trim();
+  if (!text || !(URL_RE.test(text) || DOMAIN_RE.test(text))) return { name: text, website: "" };
+  const website = normaliseUrl(text, "website");
+  const bareDomain = text
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/+$/, "");
+  return { name: bareDomain || text, website };
+}
+
 function normaliseBusinessType(value: string): "Seller" | "Installer" | "Both" | null {
   const v = normaliseKey(value);
   if (!v) return null;
@@ -501,10 +515,11 @@ export function mapRows(
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const companyName = cell("company");
-    if (!companyName) {
+    const companyNameRaw = cell("company");
+    if (!companyNameRaw) {
       errors.push("Company name is required.");
     }
+    const { name: companyName, website: companyNameWebsite } = cleanCompanyName(companyNameRaw);
 
     const rawEmail = cell("email");
     const email = firstEmail(rawEmail);
@@ -556,7 +571,7 @@ export function mapRows(
       city: cell("city"),
       region: cell("region"),
       country,
-      website: normaliseUrl(cell("website"), "website"),
+      website: normaliseUrl(cell("website"), "website") || companyNameWebsite,
       email,
       phone: cell("phone"),
       notes: insights,
@@ -599,7 +614,7 @@ export function mapRows(
       "company.city": cell("city") !== "",
       "company.region": cell("region") !== "",
       "company.country": cell("country") !== "",
-      "company.website": cell("website") !== "",
+      "company.website": cell("website") !== "" || companyNameWebsite !== "",
       "company.email": email !== "",
       "company.phone": cell("phone") !== "",
       "company.notes": insights !== "",
