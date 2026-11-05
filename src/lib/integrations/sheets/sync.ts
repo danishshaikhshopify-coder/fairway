@@ -39,6 +39,14 @@ export interface SyncOptions {
   /** Exact header text -> field overrides from the connection config. */
   columnMap?: Record<string, string>;
   connectionId?: string | null;
+  /**
+   * Pre-fetched sheet values, bypassing the Google Sheets API call. For
+   * environments with no service account configured where the rows were
+   * already read some other way (e.g. the signed-in user's own session).
+   * `sheetTitle`/`tab` label the report when this is set.
+   */
+  rows?: string[][];
+  sheetTitle?: string;
 }
 
 export interface SyncReport {
@@ -408,7 +416,9 @@ export async function runSheetSync(options: SyncOptions): Promise<SyncReport> {
   let plan: SyncPlan;
 
   try {
-    const sheet = await readSheet(config);
+    const sheet = options.rows
+      ? { spreadsheetTitle: options.sheetTitle ?? "", tab: config.tab, values: options.rows }
+      : await readSheet(config);
     sheetTitle = sheet.spreadsheetTitle;
     tab = sheet.tab;
     const result = mapRows(sheet.values, { columnMap: options.columnMap });
