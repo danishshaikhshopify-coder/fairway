@@ -99,7 +99,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
       {NAV_GROUPS.map((group) => (
         <div key={group.label} className="flex flex-col gap-1">
-          <p className="px-2.5 pb-1 text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/50">
+          <p className="px-2.5 pb-1 text-xs font-medium text-sidebar-foreground/50">
             {group.label}
           </p>
           {group.items.map(({ label, href, icon: Icon }) => {
@@ -188,7 +188,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur sm:px-4">
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/75 px-3 backdrop-blur-lg sm:px-4">
         <div className="flex items-center gap-2 md:hidden">
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetTrigger
@@ -258,7 +258,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <div className="flex flex-1">
-        <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
+        <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/75 backdrop-blur-lg md:flex">
           <div className="flex items-center gap-2.5 p-4">
             <BrandMark />
             <span className="flex flex-col leading-tight">
@@ -275,7 +275,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </aside>
 
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-7xl">{children}</div>
+          <div key={pathname} className="page-enter mx-auto w-full max-w-7xl">
+            {children}
+          </div>
         </main>
       </div>
       <Toaster position="bottom-right" richColors closeButton />

@@ -10,8 +10,11 @@ interface KpiCardProps {
   tone?: "default" | "warning" | "success";
 }
 
+// "default" is quiet chrome, not a status signal: icons take a text role, not
+// their own color. "warning"/"success" are reserved for KPIs that report a
+// real status (e.g. overdue count), where the color carries meaning.
 const TONE_CLASSES: Record<NonNullable<KpiCardProps["tone"]>, string> = {
-  default: "bg-primary/10 text-primary",
+  default: "bg-muted text-muted-foreground",
   warning: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   success: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
 };
@@ -24,7 +27,7 @@ export function KpiCard({ label, value, hint, icon: Icon, tone = "default" }: Kp
           <p className="text-xs font-medium leading-snug text-muted-foreground sm:text-sm">
             {label}
           </p>
-          <p className="mt-0.5 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl">
+          <p className="mt-0.5 font-mono text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
             {value}
           </p>
           {hint ? (

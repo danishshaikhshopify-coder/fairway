@@ -629,14 +629,17 @@ export default function CompaniesPage() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Business-fit score</span>
-                    <span className="font-medium tabular-nums">
+                    <span className="font-mono font-medium tabular-nums">
                       {detailCompany.fitScore}/100
                     </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-2 overflow-hidden rounded-sm bg-muted">
                     <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${detailCompany.fitScore}%` }}
+                      className="h-full origin-left rounded-r-sm bg-primary transition-transform"
+                      style={{
+                        width: "100%",
+                        transform: `scaleX(${detailCompany.fitScore / 100})`,
+                      }}
                     />
                   </div>
                 </div>

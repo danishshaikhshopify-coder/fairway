@@ -25,10 +25,10 @@ import { formatDate, formatFullCurrency, isOverdue } from "@/lib/format";
 function ScoreBar({ score }: { score: number }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+      <div className="h-1.5 w-16 overflow-hidden rounded-sm bg-muted">
         <div
           className={cn(
-            "h-full rounded-full",
+            "h-full origin-left rounded-r-sm transition-transform",
             score >= 80
               ? "bg-emerald-500"
               : score >= 60
@@ -37,10 +37,10 @@ function ScoreBar({ score }: { score: number }) {
                   ? "bg-amber-500"
                   : "bg-destructive",
           )}
-          style={{ width: `${score}%` }}
+          style={{ width: "100%", transform: `scaleX(${score / 100})` }}
         />
       </div>
-      <span className="tabular-nums text-sm">{score}</span>
+      <span className="font-mono text-sm tabular-nums">{score}</span>
     </div>
   );
 }
@@ -48,7 +48,7 @@ function ScoreBar({ score }: { score: number }) {
 function DetailBlock({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="text-xs font-medium text-muted-foreground">
         {label}
       </p>
       <p className="text-sm leading-6">{children}</p>
@@ -163,19 +163,22 @@ export default function LeadIntelligencePage() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Business-fit score</span>
-                  <span className="font-medium tabular-nums">
+                  <span className="font-mono font-medium tabular-nums">
                     {selected.fitScore}/100
                   </span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-2 overflow-hidden rounded-sm bg-muted">
                   <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${selected.fitScore}%` }}
+                    className="h-full origin-left rounded-r-sm bg-primary transition-transform"
+                    style={{
+                      width: "100%",
+                      transform: `scaleX(${selected.fitScore / 100})`,
+                    }}
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Lead score</span>
-                  <span className="tabular-nums">{selected.score}/100</span>
+                  <span className="font-mono tabular-nums">{selected.score}/100</span>
                 </div>
               </div>
 

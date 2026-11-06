@@ -18,18 +18,20 @@ export function BarRow({
       <span className="flex w-32 shrink-0 items-baseline gap-1.5">
         <span className="truncate">{label}</span>
         {count !== undefined ? (
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
             {count}
           </span>
         ) : null}
       </span>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+      <div className="h-2.5 flex-1 overflow-hidden rounded-sm bg-muted">
         <div
-          className="h-full rounded-full bg-primary transition-all"
-          style={{ width: `${pct}%` }}
+          className="h-full origin-left rounded-r-sm bg-primary transition-transform"
+          style={{ width: "100%", transform: `scaleX(${pct / 100})` }}
         />
       </div>
-      <span className="w-20 shrink-0 text-right tabular-nums">{display}</span>
+      <span className="w-20 shrink-0 text-right font-mono tabular-nums">
+        {display}
+      </span>
     </div>
   );
 }

@@ -139,7 +139,6 @@ export default function DashboardPage() {
           value={String(stats.qualifiedCount)}
           hint="Qualified or proposal"
           icon={Target}
-          tone="success"
         />
         <KpiCard
           label="Open opportunities"
@@ -198,7 +197,7 @@ export default function DashboardPage() {
                         </span>
                       </span>
                       <ArrowRight
-                        className="size-4 shrink-0 text-muted-foreground transition-all group-hover:translate-x-0.5 group-hover:text-foreground"
+                        className="size-4 shrink-0 text-muted-foreground transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-foreground"
                         aria-hidden="true"
                       />
                     </Link>

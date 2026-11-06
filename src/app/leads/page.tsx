@@ -988,7 +988,7 @@ export default function LeadsPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="text-xs font-medium text-muted-foreground">
                     Recommended next action
                   </p>
                   <p className="text-sm leading-6">
@@ -996,7 +996,7 @@ export default function LeadsPage() {
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="text-xs font-medium text-muted-foreground">
                     Evidence
                   </p>
                   <p className="text-sm leading-6">{detailLead.evidence}</p>
