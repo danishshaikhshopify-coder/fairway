@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { ActivityTypeBadge } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
 import { isLiveMode } from "@/lib/supabase/client";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { formatDateTime } from "@/lib/format";
 import {
   ACTIVITY_TYPES,
@@ -141,7 +143,12 @@ export default function ActivitiesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      className="space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader
         title="Activities"
         description={`${filtered.length} of ${activities.length} activities`}
@@ -153,6 +160,7 @@ export default function ActivitiesPage() {
         }
       />
 
+      <motion.div variants={fadeUp}>
       <Card>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -214,11 +222,18 @@ export default function ActivitiesPage() {
               }
             />
           ) : (
-            <ol className="space-y-0">
+            <motion.ol
+              key={`${typeFilter}-${search}`}
+              className="space-y-0"
+              variants={staggerList}
+              initial="hidden"
+              animate="show"
+            >
               {filtered.map((activity) => (
-                <li
+                <motion.li
                   key={activity.id}
-                  className="relative flex gap-4 border-l border-border pb-5 pl-5 last:pb-0"
+                  variants={fadeUp}
+                  className="relative flex gap-4 border-l border-border pb-6 pl-5 last:pb-0"
                 >
                   <span
                     aria-hidden="true"
@@ -227,11 +242,11 @@ export default function ActivitiesPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <ActivityTypeBadge type={activity.type} />
-                      <span className="text-xs text-muted-foreground">
+                      <span className="ml-auto text-xs text-muted-foreground">
                         {formatDateTime(activity.date)}
                       </span>
                     </div>
-                    <p className="mt-1.5 text-sm font-medium">{activity.subject}</p>
+                    <p className="mt-2 text-sm font-semibold">{activity.subject}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {activity.relatedTo} · {activity.owner}
                     </p>
@@ -244,12 +259,13 @@ export default function ActivitiesPage() {
                   >
                     <Trash2 aria-hidden="true" />
                   </Button>
-                </li>
+                </motion.li>
               ))}
-            </ol>
+            </motion.ol>
           )}
         </CardContent>
       </Card>
+      </motion.div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md">
@@ -368,6 +384,6 @@ export default function ActivitiesPage() {
           setDeleteTarget(null);
         }}
       />
-    </div>
+    </motion.div>
   );
 }

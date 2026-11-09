@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { motion } from "motion/react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -19,24 +20,42 @@ import {
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
 import { useToday } from "@/lib/use-today";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatDate, formatFullCurrency, isOverdue } from "@/lib/format";
 
-function ScoreBar({ score }: { score: number }) {
+// One bar component for both the table's compact score and the detail
+// panel's larger ones, so fit/lead scores read the same way everywhere.
+function ScoreBar({
+  score,
+  size = "sm",
+}: {
+  score: number;
+  size?: "sm" | "lg";
+}) {
+  const tone =
+    score >= 80
+      ? "bg-emerald-500"
+      : score >= 60
+        ? "bg-primary"
+        : score >= 45
+          ? "bg-amber-500"
+          : "bg-destructive";
+  if (size === "lg") {
+    return (
+      <div className="h-2 overflow-hidden rounded-sm bg-muted">
+        <div
+          className={cn("h-full origin-left rounded-r-sm transition-transform", tone)}
+          style={{ width: "100%", transform: `scaleX(${score / 100})` }}
+        />
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-16 overflow-hidden rounded-sm bg-muted">
         <div
-          className={cn(
-            "h-full origin-left rounded-r-sm transition-transform",
-            score >= 80
-              ? "bg-emerald-500"
-              : score >= 60
-                ? "bg-primary"
-                : score >= 45
-                  ? "bg-amber-500"
-                  : "bg-destructive",
-          )}
+          className={cn("h-full origin-left rounded-r-sm transition-transform", tone)}
           style={{ width: "100%", transform: `scaleX(${score / 100})` }}
         />
       </div>
@@ -81,10 +100,16 @@ export default function LeadIntelligencePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      className="space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader title="Lead intelligence" />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <motion.div variants={fadeUp}>
         <Card>
           <CardContent className="overflow-x-auto p-0 sm:p-4">
             <Table>
@@ -141,8 +166,10 @@ export default function LeadIntelligencePage() {
             </Table>
           </CardContent>
         </Card>
+        </motion.div>
 
         {selected ? (
+          <motion.div key={selected.id} variants={fadeUp} initial="hidden" animate="show">
           <Card className="h-fit lg:sticky lg:top-20">
             <CardContent className="space-y-4">
               <div className="flex items-start justify-between gap-2">
@@ -160,25 +187,22 @@ export default function LeadIntelligencePage() {
                 <QualificationBadge qualification={selected.qualification} />
               </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Business-fit score</span>
-                  <span className="font-mono font-medium tabular-nums">
-                    {selected.fitScore}/100
-                  </span>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Business-fit score</span>
+                    <span className="font-mono font-medium tabular-nums">
+                      {selected.fitScore}/100
+                    </span>
+                  </div>
+                  <ScoreBar score={selected.fitScore} size="lg" />
                 </div>
-                <div className="h-2 overflow-hidden rounded-sm bg-muted">
-                  <div
-                    className="h-full origin-left rounded-r-sm bg-primary transition-transform"
-                    style={{
-                      width: "100%",
-                      transform: `scaleX(${selected.fitScore / 100})`,
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Lead score</span>
-                  <span className="font-mono tabular-nums">{selected.score}/100</span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Lead score</span>
+                    <span className="font-mono tabular-nums">{selected.score}/100</span>
+                  </div>
+                  <ScoreBar score={selected.score} size="lg" />
                 </div>
               </div>
 
@@ -219,8 +243,9 @@ export default function LeadIntelligencePage() {
               </div>
             </CardContent>
           </Card>
+          </motion.div>
         ) : null}
       </div>
-    </div>
+    </motion.div>
   );
 }
