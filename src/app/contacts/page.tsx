@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link2, Mail, Phone, Plus, RotateCcw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ import { LeadStatusBadge } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
 import { isLiveMode } from "@/lib/supabase/client";
+import { useOpenFromQuery } from "@/lib/use-open-from-query";
 import { formatFullCurrency } from "@/lib/format";
 import { OWNERS, type Contact } from "@/lib/types";
 
@@ -98,6 +99,22 @@ export default function ContactsPage() {
     company: companies[0]?.name ?? "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Deep link (?contact=<id>) from the command palette and other pages.
+  // Mirrors the leads page's ?lead= link, including its hydration-safety
+  // reasoning (deferred one tick so the first client render matches the
+  // prerendered HTML).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("contact");
+    if (!id) return;
+    const timer = setTimeout(() => {
+      if (contacts.some((c) => c.id === id)) setDetailId(id);
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Command palette "New contact" (/contacts?new=1).
+  useOpenFromQuery("new", () => setAddOpen(true));
 
   const companyNames = useMemo(
     () => companies.map((c) => c.name).sort((a, b) => a.localeCompare(b)),

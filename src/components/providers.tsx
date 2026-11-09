@@ -7,6 +7,7 @@
 // importing it back the other way would make a cycle.
 
 import type { ReactNode } from "react";
+import { MotionConfig } from "motion/react";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { CrmProvider } from "@/lib/crm-store";
 
@@ -23,8 +24,13 @@ function CrmForSession({ children }: { children: ReactNode }) {
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <AuthProvider>
-      <CrmForSession>{children}</CrmForSession>
-    </AuthProvider>
+    // reducedMotion="user": every motion/react animation in the app collapses
+    // to an instant, non-transform state when the OS prefers-reduced-motion
+    // setting is on, with no per-component opt-in required.
+    <MotionConfig reducedMotion="user" transition={{ duration: 0.2 }}>
+      <AuthProvider>
+        <CrmForSession>{children}</CrmForSession>
+      </AuthProvider>
+    </MotionConfig>
   );
 }

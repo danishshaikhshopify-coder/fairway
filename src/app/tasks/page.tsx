@@ -27,6 +27,7 @@ import { EmptyState } from "@/components/crm/empty-state";
 import { PriorityBadge } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
+import { useOpenFromQuery } from "@/lib/use-open-from-query";
 import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 import { formatDate, isOverdue } from "@/lib/format";
@@ -96,6 +97,9 @@ export default function TasksPage() {
   const [form, setForm] = useState<TaskForm>(emptyTaskForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
+
+  // Command palette "New task" (/tasks?new=1).
+  useOpenFromQuery("new", () => setAddOpen(true));
 
   const counts = useMemo(() => {
     const open = tasks.filter((t) => !t.done);

@@ -77,6 +77,7 @@ import {
   leadsToCsv,
   type ImportResult,
 } from "@/lib/lead-csv";
+import { useOpenFromQuery } from "@/lib/use-open-from-query";
 import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 import { formatDate, formatFullCurrency, isOverdue, plusDaysIso, todayIso } from "@/lib/format";
@@ -229,6 +230,8 @@ export default function LeadsPage() {
     // Only on mount: later navigations keep the user's own sheet state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Command palette "New lead" (/leads?new=1).
+  useOpenFromQuery("new", () => openAdd());
   const [form, setForm] = useState<LeadForm>(emptyLeadForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
