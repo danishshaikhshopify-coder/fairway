@@ -265,7 +265,7 @@ export default function PipelinePage() {
                     if (id) dropLead(id, stage);
                   }}
                   className={cn(
-                    "flex w-72 shrink-0 flex-col rounded-xl border bg-muted/30 p-2 transition-all lg:w-auto lg:flex-1",
+                    "flex w-72 min-w-0 shrink-0 flex-col rounded-xl border bg-muted/30 p-2 transition-all lg:w-auto lg:flex-1",
                     overStage === stage && "border-primary bg-primary/5 ring-2 ring-primary/20",
                   )}
                 >
@@ -283,7 +283,7 @@ export default function PipelinePage() {
                     </span>
                   </header>
 
-                  <div className="flex flex-1 flex-col gap-2">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
                     {stageLeads.length === 0 ? (
                       <p className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
                         Drop leads here
