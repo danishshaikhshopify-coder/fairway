@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { EmptyState } from "@/components/crm/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
 import { useToday } from "@/lib/use-today";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatDate, formatFullCurrency, isOverdue } from "@/lib/format";
 import {
@@ -135,7 +137,12 @@ export default function PipelinePage() {
   const mobileStageValue = mobileStageLeads.reduce((sum, l) => sum + l.value, 0);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <motion.div
+      className="space-y-4 sm:space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader title="Pipeline" />
 
       {boardLeads.length === 0 ? (
@@ -199,15 +206,22 @@ export default function PipelinePage() {
               </span>
             </div>
 
-            <div className="mt-3 space-y-2.5">
+            <motion.div
+              key={mobileStage}
+              className="mt-3 space-y-2.5"
+              variants={staggerList}
+              initial="hidden"
+              animate="show"
+            >
               {mobileStageLeads.length === 0 ? (
                 <div className="rounded-xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
                   No leads in this stage yet. Move a lead here with its ⋯ menu.
                 </div>
               ) : (
                 mobileStageLeads.map((lead) => (
-                  <div
+                  <motion.div
                     key={lead.id}
+                    variants={fadeUp}
                     className="rounded-xl border border-border bg-card p-3.5 shadow-xs"
                   >
                     <LeadCardBody
@@ -216,20 +230,24 @@ export default function PipelinePage() {
                       onMove={(stage) => dropLead(lead.id, stage)}
                       onView={() => router.push(`/leads?lead=${lead.id}`)}
                     />
-                  </div>
+                  </motion.div>
                 ))
               )}
-            </div>
+            </motion.div>
           </div>
 
           {/* Desktop: kanban board */}
-          <div className="hidden gap-4 overflow-x-auto pb-2 md:flex">
+          <motion.div
+            className="hidden gap-4 overflow-x-auto pb-2 md:flex"
+            variants={staggerList}
+          >
             {PIPELINE_STAGES.map((stage) => {
               const stageLeads = boardLeads.filter((l) => l.status === stage);
               const total = stageLeads.reduce((sum, l) => sum + l.value, 0);
               return (
-                <section
+                <motion.section
                   key={stage}
+                  variants={fadeUp}
                   aria-label={`${PIPELINE_LABELS[stage]} stage`}
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -247,8 +265,8 @@ export default function PipelinePage() {
                     if (id) dropLead(id, stage);
                   }}
                   className={cn(
-                    "flex w-72 shrink-0 flex-col rounded-xl border bg-muted/30 p-2 transition-colors lg:w-auto lg:flex-1",
-                    overStage === stage && "border-primary bg-primary/5",
+                    "flex w-72 shrink-0 flex-col rounded-xl border bg-muted/30 p-2 transition-all lg:w-auto lg:flex-1",
+                    overStage === stage && "border-primary bg-primary/5 ring-2 ring-primary/20",
                   )}
                 >
                   <header className="flex items-center justify-between gap-2 px-1 pb-2">
@@ -288,8 +306,9 @@ export default function PipelinePage() {
                               setOverStage(null);
                             }}
                             className={cn(
-                              "cursor-grab rounded-lg border border-border bg-card p-3 shadow-xs active:cursor-grabbing",
-                              draggingId === lead.id && "opacity-50",
+                              "cursor-grab rounded-lg border border-border bg-card p-3 shadow-xs transition-all active:cursor-grabbing",
+                              draggingId === lead.id &&
+                                "scale-[1.03] opacity-90 shadow-lg ring-2 ring-primary/40",
                             )}
                           >
                             <LeadCardBody
@@ -303,12 +322,12 @@ export default function PipelinePage() {
                       })
                     )}
                   </div>
-                </section>
+                </motion.section>
               );
             })}
-          </div>
+          </motion.div>
         </>
       )}
-    </div>
+    </motion.div>
   );
 }

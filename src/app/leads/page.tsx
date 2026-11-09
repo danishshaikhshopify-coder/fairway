@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   ChevronDown,
@@ -79,6 +80,7 @@ import {
 } from "@/lib/lead-csv";
 import { useOpenFromQuery } from "@/lib/use-open-from-query";
 import { useToday } from "@/lib/use-today";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatDate, formatFullCurrency, isOverdue, plusDaysIso, todayIso } from "@/lib/format";
 import {
@@ -509,7 +511,12 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <motion.div
+      className="space-y-4 sm:space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader
         title="Leads"
         description={countLabel}
@@ -547,6 +554,7 @@ export default function LeadsPage() {
         }
       />
 
+      <motion.div variants={fadeUp}>
       <Card>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -861,6 +869,7 @@ export default function LeadsPage() {
           ) : null}
         </CardContent>
       </Card>
+      </motion.div>
 
       {/* Lead detail */}
       <Sheet
@@ -911,12 +920,24 @@ export default function LeadsPage() {
                     <p className="mt-0.5 text-sm font-semibold tabular-nums">
                       {detailLead.score}/100
                     </p>
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-sm bg-background">
+                      <div
+                        className="h-full origin-left rounded-r-sm bg-primary transition-transform"
+                        style={{ width: "100%", transform: `scaleX(${detailLead.score / 100})` }}
+                      />
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Fit</p>
                     <p className="mt-0.5 text-sm font-semibold tabular-nums">
                       {detailLead.fitScore}/100
                     </p>
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-sm bg-background">
+                      <div
+                        className="h-full origin-left rounded-r-sm bg-primary transition-transform"
+                        style={{ width: "100%", transform: `scaleX(${detailLead.fitScore / 100})` }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1300,6 +1321,6 @@ export default function LeadsPage() {
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
+    </motion.div>
   );
 }

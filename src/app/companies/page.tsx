@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   Globe,
@@ -57,6 +58,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
 import { isLiveMode } from "@/lib/supabase/client";
 import { useOpenFromQuery } from "@/lib/use-open-from-query";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { formatFullCurrency } from "@/lib/format";
 import {
   BUSINESS_TYPES,
@@ -338,7 +340,12 @@ export default function CompaniesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      className="space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader
         title="Companies"
         actions={
@@ -349,6 +356,7 @@ export default function CompaniesPage() {
         }
       />
 
+      <motion.div variants={fadeUp}>
       <Card>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -453,62 +461,98 @@ export default function CompaniesPage() {
               }
             />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Company</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="hidden md:table-cell">Location</TableHead>
-                    <TableHead className="text-right">Fit score</TableHead>
-                    <TableHead className="hidden text-right lg:table-cell">
-                      Contacts
-                    </TableHead>
-                    <TableHead className="hidden xl:table-cell">Owner</TableHead>
-                    <TableHead className="w-20" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageRows.map((company) => (
-                    <TableRow key={company.id}>
-                      <TableCell>
-                        <div className="min-w-40">
-                          <p className="font-medium">{company.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {company.website || "No website"}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <BusinessTypeBadge type={company.businessType} />
-                      </TableCell>
-                      <TableCell className="hidden text-sm whitespace-nowrap text-muted-foreground md:table-cell">
+            <>
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Company</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="hidden md:table-cell">Location</TableHead>
+                      <TableHead className="text-right">Fit score</TableHead>
+                      <TableHead className="hidden text-right lg:table-cell">
+                        Contacts
+                      </TableHead>
+                      <TableHead className="hidden xl:table-cell">Owner</TableHead>
+                      <TableHead className="w-20" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pageRows.map((company) => (
+                      <TableRow key={company.id}>
+                        <TableCell>
+                          <div className="min-w-40">
+                            <p className="font-medium">{company.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {company.website || "No website"}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <BusinessTypeBadge type={company.businessType} />
+                        </TableCell>
+                        <TableCell className="hidden text-sm whitespace-nowrap text-muted-foreground md:table-cell">
+                          {[company.city, company.region].filter(Boolean).join(", ")} ·{" "}
+                          {company.country}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {company.fitScore}
+                        </TableCell>
+                        <TableCell className="hidden text-right tabular-nums lg:table-cell">
+                          {contacts.filter((c) => c.company === company.name).length}
+                        </TableCell>
+                        <TableCell className="hidden text-sm text-muted-foreground xl:table-cell">
+                          {company.owner}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDetailId(company.id)}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile: cards */}
+              <ul className="space-y-2.5 md:hidden">
+                {pageRows.map((company) => (
+                  <li
+                    key={company.id}
+                    className="rounded-xl border border-border bg-card p-3.5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDetailId(company.id)}
+                      className="w-full rounded-sm text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <span className="block truncate text-sm font-semibold">
+                        {company.name}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
                         {[company.city, company.region].filter(Boolean).join(", ")} ·{" "}
                         {company.country}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {company.fitScore}
-                      </TableCell>
-                      <TableCell className="hidden text-right tabular-nums lg:table-cell">
-                        {contacts.filter((c) => c.company === company.name).length}
-                      </TableCell>
-                      <TableCell className="hidden text-sm text-muted-foreground xl:table-cell">
-                        {company.owner}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDetailId(company.id)}
-                        >
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                      </span>
+                    </button>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      <BusinessTypeBadge type={company.businessType} />
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        Fit {company.fitScore}
+                      </span>
+                      <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                        {contacts.filter((c) => c.company === company.name).length} contacts
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">
@@ -540,6 +584,7 @@ export default function CompaniesPage() {
           </div>
         </CardContent>
       </Card>
+      </motion.div>
 
       <Sheet
         open={detailId !== null}
@@ -963,6 +1008,6 @@ export default function CompaniesPage() {
         }
         onConfirm={confirmDelete}
       />
-    </div>
+    </motion.div>
   );
 }

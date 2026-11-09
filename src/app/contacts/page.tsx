@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Link2, Mail, Phone, Plus, RotateCcw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
 import { isLiveMode } from "@/lib/supabase/client";
 import { useOpenFromQuery } from "@/lib/use-open-from-query";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { formatFullCurrency } from "@/lib/format";
 import { OWNERS, type Contact } from "@/lib/types";
 
@@ -268,7 +270,12 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      className="space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader
         title="Contacts"
         actions={
@@ -279,6 +286,7 @@ export default function ContactsPage() {
         }
       />
 
+      <motion.div variants={fadeUp}>
       <Card>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -364,50 +372,82 @@ export default function ContactsPage() {
               }
             />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Company</TableHead>
-                    <TableHead className="hidden lg:table-cell">Title</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead className="hidden md:table-cell">Phone</TableHead>
-                    <TableHead className="hidden xl:table-cell">Owner</TableHead>
-                    <TableHead className="w-20" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageRows.map((contact) => (
-                    <TableRow key={contact.id}>
-                      <TableCell className="font-medium">{contact.name}</TableCell>
-                      <TableCell className="text-sm">{contact.company}</TableCell>
-                      <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                        {contact.title}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {contact.email}
-                      </TableCell>
-                      <TableCell className="hidden text-sm whitespace-nowrap text-muted-foreground md:table-cell">
-                        {contact.phone || "—"}
-                      </TableCell>
-                      <TableCell className="hidden text-sm text-muted-foreground xl:table-cell">
-                        {contact.owner}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDetailId(contact.id)}
-                        >
-                          View
-                        </Button>
-                      </TableCell>
+            <>
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Company</TableHead>
+                      <TableHead className="hidden lg:table-cell">Title</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead className="hidden md:table-cell">Phone</TableHead>
+                      <TableHead className="hidden xl:table-cell">Owner</TableHead>
+                      <TableHead className="w-20" />
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {pageRows.map((contact) => (
+                      <TableRow key={contact.id}>
+                        <TableCell className="font-medium">{contact.name}</TableCell>
+                        <TableCell className="text-sm">{contact.company}</TableCell>
+                        <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+                          {contact.title}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {contact.email}
+                        </TableCell>
+                        <TableCell className="hidden text-sm whitespace-nowrap text-muted-foreground md:table-cell">
+                          {contact.phone || "—"}
+                        </TableCell>
+                        <TableCell className="hidden text-sm text-muted-foreground xl:table-cell">
+                          {contact.owner}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDetailId(contact.id)}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile: cards */}
+              <ul className="space-y-2.5 md:hidden">
+                {pageRows.map((contact) => (
+                  <li
+                    key={contact.id}
+                    className="rounded-xl border border-border bg-card p-3.5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDetailId(contact.id)}
+                      className="w-full rounded-sm text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <span className="block truncate text-sm font-semibold">
+                        {contact.name}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {contact.title} · {contact.company}
+                      </span>
+                    </button>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                      <span className="truncate">{contact.email}</span>
+                      {contact.phone ? (
+                        <span className="whitespace-nowrap">{contact.phone}</span>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">
@@ -439,6 +479,7 @@ export default function ContactsPage() {
           </div>
         </CardContent>
       </Card>
+      </motion.div>
 
       <Sheet
         open={detailId !== null}
@@ -752,6 +793,6 @@ export default function ContactsPage() {
         }
         onConfirm={confirmDelete}
       />
-    </div>
+    </motion.div>
   );
 }
