@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface KpiCardProps {
   label: string;
-  value: string;
+  value: ReactNode;
   hint?: string;
   icon: LucideIcon;
   tone?: "default" | "warning" | "success";

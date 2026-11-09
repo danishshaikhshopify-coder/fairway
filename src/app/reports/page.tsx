@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import { motion } from "motion/react";
 import {
   Card,
   CardContent,
@@ -15,10 +16,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BarRow } from "@/components/crm/bar-row";
+import { AnimatedNumber } from "@/components/crm/animated-number";
+import { HorizontalBarChart } from "@/components/crm/charts/horizontal-bar-chart";
+import { SourceDonutChart } from "@/components/crm/charts/source-donut-chart";
 import { EmptyState } from "@/components/crm/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { formatCurrency, formatFullCurrency } from "@/lib/format";
 import {
   LEAD_SOURCES,
@@ -27,7 +31,15 @@ import {
   type PipelineStage,
 } from "@/lib/types";
 
-function StatRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatRow({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-0 last:pb-0">
       <div>
@@ -75,12 +87,14 @@ export default function ReportsPage() {
   }, [leads]);
 
   const valueByStage = useMemo(() => {
-    return PIPELINE_STAGES.map((stage) => ({
-      stage,
-      value: leads
-        .filter((l) => l.status === stage)
-        .reduce((sum, l) => sum + l.value, 0),
-    }));
+    return PIPELINE_STAGES.map((stage) => {
+      const stageLeads = leads.filter((l) => l.status === stage);
+      return {
+        stage,
+        value: stageLeads.reduce((sum, l) => sum + l.value, 0),
+        count: stageLeads.length,
+      };
+    });
   }, [leads]);
 
   const conversion = useMemo(() => {
@@ -132,8 +146,21 @@ export default function ReportsPage() {
     .filter((row) => row.leads > 0);
   }, [leads, owners]);
 
-  const maxSourceShare = Math.max(...sources.map((s) => s.share), 1);
-  const maxValue = Math.max(...valueByStage.map((r) => r.value), 1);
+  const sourceChartData = useMemo(
+    () => sources.map((row) => ({ key: row.source, label: row.source, value: row.share })),
+    [sources],
+  );
+
+  const stageChartData = useMemo(
+    () =>
+      valueByStage.map((row) => ({
+        key: row.stage,
+        label: PIPELINE_LABELS[row.stage],
+        value: row.value,
+        count: row.count,
+      })),
+    [valueByStage],
+  );
 
   if (leads.length === 0) {
     return (
@@ -148,102 +175,113 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      className="space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader title="Reports" />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Lead funnel</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {funnel.map((row) => (
-              <div key={row.stage} className="space-y-1">
-                <div className="flex flex-wrap items-center justify-between gap-x-3 text-sm">
-                  <span className="font-medium">
-                    {PIPELINE_LABELS[row.stage as PipelineStage]}
-                  </span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {row.count} lead{row.count === 1 ? "" : "s"} · {row.pctOfTop}% ·{" "}
-                    {row.stepRate}
-                  </span>
+        <motion.div variants={fadeUp} className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Lead funnel</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {funnel.map((row) => (
+                <div key={row.stage} className="space-y-1">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 text-sm">
+                    <span className="font-medium">
+                      {PIPELINE_LABELS[row.stage as PipelineStage]}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {row.count} lead{row.count === 1 ? "" : "s"} · {row.pctOfTop}% ·{" "}
+                      {row.stepRate}
+                    </span>
+                  </div>
+                  <div className="h-7 overflow-hidden rounded-md bg-muted">
+                    <motion.div
+                      className="h-full origin-left rounded-md bg-primary/80"
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: Math.max(row.pctOfTop, 6) / 100 }}
+                      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    />
+                  </div>
                 </div>
-                <div className="h-7 overflow-hidden rounded-md bg-muted">
-                  <div
-                    className="h-full rounded-md bg-primary/80"
-                    style={{ width: `${Math.max(row.pctOfTop, 6)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+              ))}
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Conversion rates</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StatRow
-              label="Contacted rate"
-              hint="Leads past the new stage"
-              value={`${conversion.contactedRate}%`}
-            />
-            <StatRow
-              label="Qualified rate"
-              hint="Qualified, proposal or won"
-              value={`${conversion.qualifiedRate}%`}
-            />
-            <StatRow
-              label="Win rate"
-              hint={`Across ${conversion.closedCount} closed deals`}
-              value={`${conversion.winRate}%`}
-            />
-            <StatRow
-              label="Average active deal"
-              hint="Open pipeline value per lead"
-              value={formatFullCurrency(Math.round(conversion.avgDeal))}
-            />
-          </CardContent>
-        </Card>
+        <motion.div variants={fadeUp}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Conversion rates</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <StatRow
+                label="Contacted rate"
+                hint="Leads past the new stage"
+                value={<AnimatedNumber value={conversion.contactedRate} format={(v) => `${Math.round(v)}%`} />}
+              />
+              <StatRow
+                label="Qualified rate"
+                hint="Qualified, proposal or won"
+                value={<AnimatedNumber value={conversion.qualifiedRate} format={(v) => `${Math.round(v)}%`} />}
+              />
+              <StatRow
+                label="Win rate"
+                hint={`Across ${conversion.closedCount} closed deals`}
+                value={<AnimatedNumber value={conversion.winRate} format={(v) => `${Math.round(v)}%`} />}
+              />
+              <StatRow
+                label="Average active deal"
+                hint="Open pipeline value per lead"
+                value={
+                  <AnimatedNumber
+                    value={conversion.avgDeal}
+                    format={(v) => formatFullCurrency(Math.round(v))}
+                  />
+                }
+              />
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Lead sources</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {sources.map((row) => (
-              <BarRow
-                key={row.source}
-                label={row.source}
-                value={row.share}
-                max={maxSourceShare}
-                display={`${row.share}%`}
-              />
-            ))}
-          </CardContent>
-        </Card>
+        <motion.div variants={fadeUp}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Lead sources</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SourceDonutChart data={sourceChartData} />
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Pipeline value by stage</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {valueByStage.map((row) => (
-              <BarRow
-                key={row.stage}
-                label={PIPELINE_LABELS[row.stage]}
-                value={row.value}
-                max={maxValue}
-                display={formatCurrency(row.value)}
+        <motion.div variants={fadeUp}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Pipeline value by stage</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <HorizontalBarChart
+                data={stageChartData}
+                valueFormatter={formatCurrency}
+                tooltipExtra={(row) =>
+                  `${row.count} lead${row.count === 1 ? "" : "s"}`
+                }
               />
-            ))}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
+      <motion.div variants={fadeUp}>
       <Card>
         <CardHeader>
           <CardTitle>Rep performance</CardTitle>
@@ -281,6 +319,7 @@ export default function ReportsPage() {
           </Table>
         </CardContent>
       </Card>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

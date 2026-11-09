@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { motion } from "motion/react";
 import {
   ArrowRight,
   CircleCheck,
@@ -20,11 +21,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ActivityTypeBadge } from "@/components/crm/status-badge";
-import { BarRow } from "@/components/crm/bar-row";
+import { AnimatedNumber } from "@/components/crm/animated-number";
+import { HorizontalBarChart } from "@/components/crm/charts/horizontal-bar-chart";
 import { EmptyState } from "@/components/crm/empty-state";
 import { KpiCard } from "@/components/crm/kpi-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCrm } from "@/lib/crm-store";
+import { fadeUp, staggerList } from "@/lib/motion";
 import { useToday } from "@/lib/use-today";
 import { cn } from "@/lib/utils";
 import {
@@ -121,45 +124,70 @@ export default function DashboardPage() {
       .slice(0, 5);
   }, [activities]);
 
-  const maxValue = Math.max(...pipelineSummary.map((r) => r.value), 1);
+  const stageChartData = useMemo(
+    () =>
+      pipelineSummary.map((row) => ({
+        key: row.stage,
+        label: PIPELINE_LABELS[row.stage],
+        value: row.value,
+        count: row.count,
+      })),
+    [pipelineSummary],
+  );
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <motion.div
+      className="space-y-4 sm:space-y-6"
+      variants={staggerList}
+      initial="hidden"
+      animate="show"
+    >
       <PageHeader title="Dashboard" />
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <KpiCard
-          label="Total leads"
-          value={String(stats.total)}
-          hint={`${stats.activeCount} active · ${stats.wonCount} won`}
-          icon={Users}
-        />
-        <KpiCard
-          label="Qualified"
-          value={String(stats.qualifiedCount)}
-          hint="Qualified or proposal"
-          icon={Target}
-        />
-        <KpiCard
-          label="Open opportunities"
-          value={String(stats.activeCount)}
-          hint={`${formatCurrency(stats.pipelineValue)} in pipeline`}
-          icon={TrendingUp}
-        />
-        <KpiCard
-          label="Overdue follow-ups"
-          value={String(stats.overdueCount)}
-          hint={
-            stats.overdueCount > 0
-              ? "Needs attention today"
-              : "All on schedule"
-          }
-          icon={PhoneCall}
-          tone={stats.overdueCount > 0 ? "warning" : "success"}
-        />
-      </div>
+      <motion.div
+        className="grid grid-cols-2 gap-3 xl:grid-cols-4"
+        variants={staggerList}
+      >
+        <motion.div variants={fadeUp}>
+          <KpiCard
+            label="Total leads"
+            value={<AnimatedNumber value={stats.total} />}
+            hint={`${stats.activeCount} active · ${stats.wonCount} won`}
+            icon={Users}
+          />
+        </motion.div>
+        <motion.div variants={fadeUp}>
+          <KpiCard
+            label="Qualified"
+            value={<AnimatedNumber value={stats.qualifiedCount} />}
+            hint="Qualified or proposal"
+            icon={Target}
+          />
+        </motion.div>
+        <motion.div variants={fadeUp}>
+          <KpiCard
+            label="Open opportunities"
+            value={<AnimatedNumber value={stats.activeCount} />}
+            hint={`${formatCurrency(stats.pipelineValue)} in pipeline`}
+            icon={TrendingUp}
+          />
+        </motion.div>
+        <motion.div variants={fadeUp}>
+          <KpiCard
+            label="Overdue follow-ups"
+            value={<AnimatedNumber value={stats.overdueCount} />}
+            hint={
+              stats.overdueCount > 0
+                ? "Needs attention today"
+                : "All on schedule"
+            }
+            icon={PhoneCall}
+            tone={stats.overdueCount > 0 ? "warning" : "success"}
+          />
+        </motion.div>
+      </motion.div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <motion.div className="grid gap-4 lg:grid-cols-5" variants={fadeUp}>
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -255,36 +283,35 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Pipeline by stage</CardTitle>
-          <CardAction>
-            <Button
-              variant="ghost"
-              size="sm"
-              nativeButton={false}
-              render={<Link href="/pipeline" />}
-            >
-              Open board
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {pipelineSummary.map((row) => (
-            <BarRow
-              key={row.stage}
-              label={PIPELINE_LABELS[row.stage]}
-              count={row.count}
-              value={row.value}
-              max={maxValue}
-              display={formatCurrency(row.value)}
+      <motion.div variants={fadeUp}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Pipeline by stage</CardTitle>
+            <CardAction>
+              <Button
+                variant="ghost"
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/pipeline" />}
+              >
+                Open board
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <HorizontalBarChart
+              data={stageChartData}
+              valueFormatter={formatCurrency}
+              tooltipExtra={(row) =>
+                `${row.count} lead${row.count === 1 ? "" : "s"}`
+              }
             />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </motion.div>
   );
 }
