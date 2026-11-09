@@ -412,6 +412,7 @@ function GmailCard() {
   const [loading, setLoading] = useState(live);
   const [status, setStatus] = useState<GmailConnectionResponse | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [redirectUri, setRedirectUri] = useState("");
 
   async function load() {
@@ -452,6 +453,23 @@ function GmailCard() {
       toast.error(error instanceof Error ? error.message : "Could not disconnect Gmail.");
     } finally {
       setDisconnecting(false);
+    }
+  }
+
+  async function syncInbox() {
+    setSyncing(true);
+    try {
+      const result = await api<{ scanned: number; logged: number; message?: string }>(
+        "/api/integrations/gmail/sync",
+        { method: "POST" },
+      );
+      toast.success(
+        result.message ?? `Scanned ${result.scanned} message(s), logged ${result.logged} new.`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not sync inbox.");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -505,9 +523,15 @@ function GmailCard() {
             <p className="text-sm">
               Connected as <span className="font-medium text-foreground">{status.email}</span>
             </p>
-            <Button variant="outline" onClick={disconnect} disabled={disconnecting || loading}>
-              Disconnect
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={syncInbox} disabled={syncing || loading}>
+                <RefreshCw className={syncing ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+                Sync inbox
+              </Button>
+              <Button variant="outline" onClick={disconnect} disabled={disconnecting || loading}>
+                Disconnect
+              </Button>
+            </div>
           </div>
         ) : status?.oauthConfigured ? (
           <a href="/api/integrations/gmail/authorize" className={buttonVariants({})}>
@@ -520,8 +544,9 @@ function GmailCard() {
         ) : null}
 
         <p className="text-xs text-muted-foreground">
-          Connecting only grants read/send access via OAuth — sending and inbox sync are not wired
-          up yet (see the setup notes for what remains).
+          Sending (from a lead or contact) and &ldquo;Sync inbox&rdquo; above both use this connection. Inbox
+          sync matches senders/recipients against known lead/contact emails and logs each new
+          message as an activity — a re-sync never double-logs the same message.
         </p>
       </CardContent>
     </Card>

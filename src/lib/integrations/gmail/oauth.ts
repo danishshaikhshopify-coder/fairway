@@ -11,6 +11,8 @@
 // The resulting per-member access/refresh tokens are stored in
 // gmail_connections (see the b4 migration), never here.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
@@ -146,6 +148,55 @@ export async function refreshAccessToken(refreshToken: string): Promise<GmailTok
     );
   }
   return { ...tokens, refreshToken: tokens.refreshToken ?? refreshToken };
+}
+
+export interface GmailConnectionRow {
+  id: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+}
+
+/**
+ * A valid access token for this connection, refreshing (and persisting the
+ * refreshed tokens) first if the stored one has expired or is about to.
+ * Any failure is written to `gmail_connections.last_error` before the error
+ * is re-thrown, so the Settings UI can surface it (requirement: "handle
+ * OAuth token refresh and errors").
+ */
+export async function getValidAccessToken(
+  db: SupabaseClient,
+  connection: GmailConnectionRow,
+): Promise<string> {
+  const expiresAt = connection.token_expires_at
+    ? new Date(connection.token_expires_at).getTime()
+    : 0;
+  const freshEnough = connection.access_token && expiresAt > Date.now() + 60_000;
+  if (freshEnough) return connection.access_token as string;
+
+  if (!connection.refresh_token) {
+    const message = "Gmail connection has no refresh token. Reconnect in Settings.";
+    await db.from("gmail_connections").update({ last_error: message }).eq("id", connection.id);
+    throw new GmailOAuthError("refresh_failed", message);
+  }
+
+  try {
+    const tokens = await refreshAccessToken(connection.refresh_token);
+    await db
+      .from("gmail_connections")
+      .update({
+        access_token: tokens.accessToken,
+        refresh_token: tokens.refreshToken,
+        token_expires_at: new Date(tokens.expiresAt).toISOString(),
+        last_error: null,
+      })
+      .eq("id", connection.id);
+    return tokens.accessToken;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Token refresh failed.";
+    await db.from("gmail_connections").update({ last_error: message }).eq("id", connection.id);
+    throw error;
+  }
 }
 
 export async function fetchGmailEmail(accessToken: string): Promise<string | null> {

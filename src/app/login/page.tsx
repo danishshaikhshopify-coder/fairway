@@ -1,7 +1,15 @@
 "use client";
 
-// /login — sign in or create an account. Rendered bare (no CRM chrome, no CRM
-// data): AppShell returns early for this path.
+// /login — sign in only. Rendered bare (no CRM chrome, no CRM data): AppShell
+// returns early for this path.
+//
+// Fairway CRM is invite-only (Phase 2): there is no self-serve "create
+// account" here, and the server enforces that independently of this UI —
+// handle_new_user() rejects any signup with no matching pending invitation
+// (see the B7 migration), so removing the form is a UX courtesy, not the
+// actual security boundary. A partner's account is created when the owner
+// invites them (Settings -> Team); they arrive here already having set a
+// password via the emailed link (see /invite/accept).
 //
 // Live mode only. In demo mode there are no accounts, so the page bounces
 // straight back to the mock CRM instead of offering a form that cannot work.
@@ -16,30 +24,17 @@ import { FormField } from "@/components/crm/form-field";
 import { Input } from "@/components/ui/input";
 import { getSupabase, isLiveMode } from "@/lib/supabase/client";
 
-type Mode = "signin" | "signup";
-type FieldErrors = Partial<Record<"name" | "email" | "password", string>>;
+type FieldErrors = Partial<Record<"email" | "password", string>>;
 
-// Mirrors the local stack's GoTrue config: minimum_password_length = 6 and no
-// character-class requirements. Matching it client-side saves a round trip
-// without pretending to be the authority — the server still validates.
-const MIN_PASSWORD_LENGTH = 6;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function validate(
-  mode: Mode,
-  name: string,
-  email: string,
-  password: string,
-): FieldErrors {
+function validate(email: string, password: string): FieldErrors {
   const errors: FieldErrors = {};
-  if (mode === "signup" && name.trim().length < 2) {
-    errors.name = "Enter your full name.";
-  }
   if (!EMAIL_RE.test(email.trim())) {
     errors.email = "Enter a valid email address.";
   }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    errors.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (password.length < 1) {
+    errors.password = "Enter your password.";
   }
   return errors;
 }
@@ -78,13 +73,10 @@ function safeReturnPath(): string {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("signin");
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Demo mode has no accounts: bounce straight back to the mock CRM.
@@ -92,19 +84,11 @@ export default function LoginPage() {
     if (!isLiveMode()) router.replace("/");
   }, [router]);
 
-  function switchMode() {
-    setMode((m) => (m === "signin" ? "signup" : "signin"));
-    setErrors({});
-    setFormError(null);
-    setNotice(null);
-  }
-
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const found = validate(mode, name, email, password);
+    const found = validate(email, password);
     setErrors(found);
     setFormError(null);
-    setNotice(null);
     if (Object.keys(found).length > 0) return;
 
     const db = getSupabase();
@@ -117,44 +101,21 @@ export default function LoginPage() {
 
     setBusy(true);
     try {
-      if (mode === "signin") {
-        const { error } = await db.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (error) {
-          setFormError(authErrorMessage(error));
-          return;
-        }
-        // The cookie is already written; the proxy lets the next request
-        // through and AuthProvider picks the session up on navigation.
-        router.replace(safeReturnPath());
-        return;
-      }
-
-      const { data, error } = await db.auth.signUp({
+      const { error } = await db.auth.signInWithPassword({
         email: email.trim(),
         password,
-        options: { data: { full_name: name.trim() } },
       });
       if (error) {
         setFormError(authErrorMessage(error));
         return;
       }
-      if (!data.session) {
-        // Email confirmations enabled on the project: no session until the
-        // confirmation link is used.
-        setNotice("Check your inbox to confirm your address, then sign in.");
-        setMode("signin");
-        return;
-      }
+      // The cookie is already written; the proxy lets the next request
+      // through and AuthProvider picks the session up on navigation.
       router.replace(safeReturnPath());
     } finally {
       setBusy(false);
     }
   }
-
-  const signingUp = mode === "signup";
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-10">
@@ -168,13 +129,9 @@ export default function LoginPage() {
             className="size-10 rounded-xl"
             priority
           />
-          <h1 className="text-xl font-semibold tracking-tight">
-            {signingUp ? "Create your account" : "Welcome back"}
-          </h1>
+          <h1 className="text-xl font-semibold tracking-tight">Welcome back</h1>
           <p className="text-sm text-muted-foreground">
-            {signingUp
-              ? "Set up your account to start tracking golf simulator leads."
-              : "Sign in to Fairway CRM to pick up your pipeline."}
+            Sign in to Fairway CRM to pick up your pipeline.
           </p>
         </CardHeader>
 
@@ -187,25 +144,6 @@ export default function LoginPage() {
               >
                 {formError}
               </div>
-            ) : null}
-            {notice ? (
-              <div className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-                {notice}
-              </div>
-            ) : null}
-
-            {signingUp ? (
-              <FormField label="Full name" required error={errors.name}>
-                {(props) => (
-                  <Input
-                    {...props}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    autoComplete="name"
-                    placeholder="Alex Morgan"
-                  />
-                )}
-              </FormField>
             ) : null}
 
             <FormField label="Email" required error={errors.email}>
@@ -228,9 +166,7 @@ export default function LoginPage() {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  autoComplete={
-                    signingUp ? "new-password" : "current-password"
-                  }
+                  autoComplete="current-password"
                 />
               )}
             </FormField>
@@ -239,25 +175,12 @@ export default function LoginPage() {
               {busy ? (
                 <LoaderCircle className="animate-spin" aria-hidden="true" />
               ) : null}
-              {busy
-                ? "Please wait"
-                : signingUp
-                  ? "Create account"
-                  : "Sign in"}
+              {busy ? "Please wait" : "Sign in"}
             </Button>
           </form>
 
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            {signingUp ? "Already have an account?" : "Don't have an account?"}{" "}
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="px-0"
-              onClick={switchMode}
-            >
-              {signingUp ? "Sign in" : "Create account"}
-            </Button>
+            Fairway CRM is invite-only. Ask your admin for an invite.
           </p>
         </CardContent>
       </Card>

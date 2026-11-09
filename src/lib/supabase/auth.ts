@@ -30,7 +30,11 @@ export function hasAuthCookie(
 
 /** Routes reachable without a session. */
 export function isPublicPath(pathname: string): boolean {
-  return pathname === "/login" || pathname.startsWith("/login/");
+  return (
+    pathname === "/login" ||
+    pathname.startsWith("/login/") ||
+    pathname === "/invite/accept"
+  );
 }
 
 /**
@@ -38,11 +42,16 @@ export function isPublicPath(pathname: string): boolean {
  *
  * `?next=` only ever carries an in-app absolute path (never `//host` or a
  * scheme), so it cannot be used as an open redirect.
+ *
+ * API routes are never redirected: a fetch() caller expects a JSON response
+ * (401/403 from requireActor(), or a bearer-secret check for cron routes),
+ * not an HTML redirect to /login. Each route enforces its own auth.
  */
 export function authRedirect(
   pathname: string,
   hasSession: boolean,
 ): string | null {
+  if (pathname.startsWith("/api/")) return null;
   if (!hasSession && !isPublicPath(pathname)) {
     return `/login?next=${encodeURIComponent(pathname)}`;
   }

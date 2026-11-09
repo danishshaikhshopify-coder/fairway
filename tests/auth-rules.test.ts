@@ -75,9 +75,10 @@ test("ignores lookalike and empty cookies", () => {
   assert.equal(hasAuthCookie([{ name: "sb-127-auth-token", value: "" }]), false);
 });
 
-test("only /login is public", () => {
+test("only /login and /invite/accept are public", () => {
   assert.equal(isPublicPath("/login"), true);
   assert.equal(isPublicPath("/login/"), true);
+  assert.equal(isPublicPath("/invite/accept"), true);
   assert.equal(isPublicPath("/logins"), false);
   assert.equal(isPublicPath("/"), false);
   assert.equal(isPublicPath("/leads"), false);
@@ -98,4 +99,15 @@ test("leaves signed-in requests alone, except on /login", () => {
 
 test("never gates /login for a signed-out browser", () => {
   assert.equal(authRedirect("/login", false), null);
+});
+
+test("never gates /invite/accept for a signed-out browser", () => {
+  assert.equal(authRedirect("/invite/accept", false), null);
+});
+
+test("never redirects API routes — they enforce their own auth", () => {
+  assert.equal(authRedirect("/api/integrations/gmail/send", false), null);
+  assert.equal(authRedirect("/api/team/invitations", false), null);
+  assert.equal(authRedirect("/api/cron/reminders", false), null);
+  assert.equal(authRedirect("/api/team/invitations", true), null);
 });

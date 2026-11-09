@@ -162,9 +162,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // The sign-in page brings its own full-screen layout and needs no CRM chrome
-  // (or CRM data) around it.
-  if (pathname === "/login") return <>{children}</>;
+  // The sign-in and invite-acceptance pages bring their own full-screen
+  // layout and need no CRM chrome (or CRM data) around them. The latter is
+  // visited signed-out, mid-invite, before any workspace fetch could work.
+  if (pathname === "/login" || pathname === "/invite/accept") return <>{children}</>;
 
   // Live mode: hold the shell until the workspace fetch lands, rather than
   // flashing empty states (or, on a failed fetch, whatever is left in state).

@@ -32,6 +32,7 @@ import {
   saveNotificationPrefs,
 } from "@/lib/supabase/repository";
 import { IntegrationsPanel } from "@/components/crm/integrations-panel";
+import { TeamPanel } from "@/components/crm/team-panel";
 
 const TIMEZONES = [
   "America/New_York",
@@ -194,6 +195,7 @@ export default function SettingsPage() {
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="crm">CRM</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -424,6 +426,10 @@ export default function SettingsPage() {
 
         <TabsContent value="integrations">
           <IntegrationsPanel />
+        </TabsContent>
+
+        <TabsContent value="team">
+          <TeamPanel />
         </TabsContent>
       </Tabs>
     </div>

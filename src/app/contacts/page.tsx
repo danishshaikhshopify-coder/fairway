@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import { FormField } from "@/components/crm/form-field";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import { ComposeEmailButton } from "@/components/crm/compose-email-button";
 import { EmptyState } from "@/components/crm/empty-state";
 import { LeadStatusBadge } from "@/components/crm/status-badge";
 import { PageHeader } from "@/components/layout/page-header";
@@ -495,7 +496,7 @@ export default function ContactsPage() {
                 <SheetDescription>
                   {detailContact.title} at {detailContact.company}
                 </SheetDescription>
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-wrap gap-2 pt-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -510,6 +511,7 @@ export default function ContactsPage() {
                   >
                     Delete contact
                   </Button>
+                  <ComposeEmailButton to={detailContact.email} contactId={detailContact.id} />
                 </div>
               </SheetHeader>
               <div className="space-y-5 p-4">

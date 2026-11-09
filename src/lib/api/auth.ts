@@ -90,6 +90,11 @@ export function canConfigure(role: WorkspaceRole): boolean {
   return role === "owner" || role === "admin";
 }
 
+/** Team access is private: only the workspace owner invites/manages partners. */
+export function canManageTeam(role: WorkspaceRole): boolean {
+  return role === "owner";
+}
+
 export function forbidden(message = "Your role cannot perform this action."): Response {
   return json({ error: "forbidden", message }, 403);
 }

@@ -61,6 +61,7 @@ import {
 } from "@/components/ui/table";
 import { FormField } from "@/components/crm/form-field";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import { ComposeEmailButton } from "@/components/crm/compose-email-button";
 import { EmptyState } from "@/components/crm/empty-state";
 import {
   BusinessTypeBadge,
@@ -891,7 +892,7 @@ export default function LeadsPage() {
                 </SheetDescription>
               </SheetHeader>
               <div className="space-y-5 p-4">
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -907,6 +908,7 @@ export default function LeadsPage() {
                   >
                     Delete
                   </Button>
+                  <ComposeEmailButton to={detailLead.email} leadId={detailLead.id} />
                 </div>
                 <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/50 p-3 text-center">
                   <div>
