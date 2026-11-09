@@ -235,7 +235,7 @@ function GoogleSheetsCard() {
         <CardContent className="space-y-4">
           {!credentialsConfigured ? (
             <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
               <p>
                 Server credentials are not set. An owner/admin must set{" "}
                 <code className="rounded bg-muted px-1">GOOGLE_SHEETS_CLIENT_EMAIL</code> and{" "}
@@ -478,7 +478,7 @@ function GmailCard() {
       <CardContent className="space-y-4">
         {status && !status.oauthConfigured ? (
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
             <div className="space-y-1">
               <p>
                 Server OAuth credentials are not set. Create an OAuth 2.0 Web client in Google Cloud
