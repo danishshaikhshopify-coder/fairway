@@ -83,6 +83,115 @@ const BUCKET_LABELS: Record<Bucket, string> = {
   overdue: "Overdue",
 };
 
+interface TaskRowProps {
+  task: Task;
+  today: string;
+  onToggle: (task: Task) => void;
+  onReschedule: (task: Task) => void;
+  onCancel: (task: Task) => void;
+  onDelete: (task: Task) => void;
+}
+
+/** One task row, shared by every section/flat-list render site below. */
+function TaskRow({ task, today, onToggle, onReschedule, onCancel, onDelete }: TaskRowProps) {
+  const cancelled = Boolean(task.cancelledAt);
+  const overdue = !task.done && !cancelled && isOverdue(task.dueDate, today);
+  return (
+    <li className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+      <Checkbox
+        checked={task.done}
+        disabled={cancelled}
+        aria-label={`Mark "${task.title}" as ${task.done ? "open" : "complete"}`}
+        className="mt-0.5"
+        onCheckedChange={() => onToggle(task)}
+      />
+      <div className="min-w-0 flex-1">
+        <p
+          className={cn(
+            "text-sm font-medium",
+            (task.done || cancelled) && "text-muted-foreground line-through",
+          )}
+        >
+          {task.title}
+        </p>
+        <p
+          className={cn(
+            "mt-0.5 text-xs",
+            overdue ? "font-medium text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {task.relatedTo} · due {formatDate(task.dueDate)}
+          {cancelled ? " · cancelled" : overdue ? " · overdue" : ""}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="hidden text-xs text-muted-foreground sm:inline">
+          {TASK_TYPE_LABELS[task.type]}
+        </span>
+        <PriorityBadge priority={task.priority} />
+        {!task.done && !cancelled ? (
+          <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Reschedule "${task.title}"`}
+              onClick={() => onReschedule(task)}
+            >
+              <CalendarClock aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Cancel "${task.title}"`}
+              onClick={() => onCancel(task)}
+            >
+              <XCircle aria-hidden="true" />
+            </Button>
+          </>
+        ) : null}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Delete "${task.title}"`}
+          onClick={() => onDelete(task)}
+        >
+          <Trash2 aria-hidden="true" />
+        </Button>
+      </div>
+    </li>
+  );
+}
+
+interface TaskSection {
+  key: string;
+  label: string;
+  tasks: Task[];
+}
+
+/** Groups tasks into named sections for the "all" bucket view — every task
+ * lands in exactly one section, so nothing is dropped from view. */
+function groupIntoSections(tasks: Task[], today: string): TaskSection[] {
+  const overdue: Task[] = [];
+  const dueToday: Task[] = [];
+  const upcoming: Task[] = [];
+  const completed: Task[] = [];
+  const cancelled: Task[] = [];
+  for (const task of tasks) {
+    if (task.done) completed.push(task);
+    else if (task.cancelledAt) cancelled.push(task);
+    else if (isOverdue(task.dueDate, today)) overdue.push(task);
+    else if (task.dueDate === today) dueToday.push(task);
+    else upcoming.push(task);
+  }
+  return [
+    { key: "overdue", label: "Overdue", tasks: overdue },
+    { key: "today", label: "Today", tasks: dueToday },
+    { key: "upcoming", label: "Upcoming", tasks: upcoming },
+    { key: "completed", label: "Completed", tasks: completed },
+    { key: "cancelled", label: "Cancelled", tasks: cancelled },
+  ].filter((section) => section.tasks.length > 0);
+}
+
 export default function TasksPage() {
   const {
     tasks,
@@ -165,6 +274,16 @@ export default function TasksPage() {
     setStatusFilter(ALL);
     setPriorityFilter(ALL);
     setBucketFilter("all");
+  }
+
+  function handleToggle(task: Task) {
+    toggleTask(task.id);
+    toast.success(task.done ? `"${task.title}" reopened.` : `"${task.title}" completed.`);
+  }
+
+  function openReschedule(task: Task) {
+    setRescheduleDate(task.dueDate);
+    setRescheduleTarget(task);
   }
 
   function setField<K extends keyof TaskForm>(key: K, value: TaskForm[K]) {
@@ -297,93 +416,42 @@ export default function TasksPage() {
                 )
               }
             />
+          ) : bucketFilter === "all" ? (
+            <div className="space-y-5">
+              {groupIntoSections(filtered, today).map((section) => (
+                <div key={section.key}>
+                  <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                    {section.label} ({section.tasks.length})
+                  </h3>
+                  <ul className="divide-y divide-border">
+                    {section.tasks.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        today={today}
+                        onToggle={handleToggle}
+                        onReschedule={openReschedule}
+                        onCancel={setCancelTarget}
+                        onDelete={setDeleteTarget}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
           ) : (
             <ul className="divide-y divide-border">
-              {filtered.map((task) => {
-                const cancelled = Boolean(task.cancelledAt);
-                const overdue = !task.done && !cancelled && isOverdue(task.dueDate, today);
-                return (
-                  <li
-                    key={task.id}
-                    className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
-                  >
-                    <Checkbox
-                      checked={task.done}
-                      disabled={cancelled}
-                      aria-label={`Mark "${task.title}" as ${
-                        task.done ? "open" : "complete"
-                      }`}
-                      className="mt-0.5"
-                      onCheckedChange={() => {
-                        toggleTask(task.id);
-                        toast.success(
-                          task.done
-                            ? `"${task.title}" reopened.`
-                            : `"${task.title}" completed.`,
-                        );
-                      }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={cn(
-                          "text-sm font-medium",
-                          (task.done || cancelled) && "text-muted-foreground line-through",
-                        )}
-                      >
-                        {task.title}
-                      </p>
-                      <p
-                        className={cn(
-                          "mt-0.5 text-xs",
-                          overdue
-                            ? "font-medium text-destructive"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {task.relatedTo} · due {formatDate(task.dueDate)}
-                        {cancelled ? " · cancelled" : overdue ? " · overdue" : ""}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="hidden text-xs text-muted-foreground sm:inline">
-                        {TASK_TYPE_LABELS[task.type]}
-                      </span>
-                      <PriorityBadge priority={task.priority} />
-                      {!task.done && !cancelled ? (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={`Reschedule "${task.title}"`}
-                            onClick={() => {
-                              setRescheduleDate(task.dueDate);
-                              setRescheduleTarget(task);
-                            }}
-                          >
-                            <CalendarClock aria-hidden="true" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={`Cancel "${task.title}"`}
-                            onClick={() => setCancelTarget(task)}
-                          >
-                            <XCircle aria-hidden="true" />
-                          </Button>
-                        </>
-                      ) : null}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Delete "${task.title}"`}
-                        onClick={() => setDeleteTarget(task)}
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </li>
-                );
-              })}
+              {filtered.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  today={today}
+                  onToggle={handleToggle}
+                  onReschedule={openReschedule}
+                  onCancel={setCancelTarget}
+                  onDelete={setDeleteTarget}
+                />
+              ))}
             </ul>
           )}
         </CardContent>
