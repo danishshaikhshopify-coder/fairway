@@ -161,6 +161,7 @@ test("leadToRow resolves owner and source names to ids", () => {
       followUpEvidence: "",
       qualification: "Qualified",
       recommendedAction: "Send financing",
+      cadencePaused: false,
     },
     DIR,
   );
@@ -193,6 +194,7 @@ test("leadToRow nulls an owner or source the workspace does not have", () => {
       followUpEvidence: "",
       qualification: "Pending",
       recommendedAction: "",
+      cadencePaused: false,
     },
     EMPTY_DIRECTORY,
   );
@@ -220,6 +222,7 @@ test("leadToRow stores empty dates as NULL, not empty string", () => {
       followUpEvidence: "",
       qualification: "Pending",
       recommendedAction: "",
+      cadencePaused: false,
     },
     DIR,
   );
@@ -302,6 +305,7 @@ test("taskToRow carries related_to and nulls an empty due date", () => {
     type: "call",
     done: false,
     relatedTo: "Dana Reyes",
+    cancelledAt: null,
   });
   assert.equal(row.due_date, null);
   assert.equal(row.related_to, "Dana Reyes");
@@ -310,8 +314,24 @@ test("taskToRow carries related_to and nulls an empty due date", () => {
 });
 
 test("taskToRow stamps completed_at only when done", () => {
-  const done = taskToRow({ title: "x", dueDate: "", priority: "low", type: "call", done: true, relatedTo: "" });
-  const notDone = taskToRow({ title: "x", dueDate: "", priority: "low", type: "call", done: false, relatedTo: "" });
+  const done = taskToRow({
+    title: "x",
+    dueDate: "",
+    priority: "low",
+    type: "call",
+    done: true,
+    relatedTo: "",
+    cancelledAt: null,
+  });
+  const notDone = taskToRow({
+    title: "x",
+    dueDate: "",
+    priority: "low",
+    type: "call",
+    done: false,
+    relatedTo: "",
+    cancelledAt: null,
+  });
   assert.ok(done.completed_at);
   assert.equal(notDone.completed_at, null);
 });
@@ -348,6 +368,7 @@ const baseLead = {
   followUpEvidence: "",
   qualification: "Pending" as const,
   recommendedAction: "",
+  cadencePaused: false,
 };
 
 const leadPatch = (

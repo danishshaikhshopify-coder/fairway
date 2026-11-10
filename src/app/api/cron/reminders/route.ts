@@ -22,6 +22,7 @@ function authorised(request: Request): boolean {
 }
 
 interface DigestContent {
+  todayTasks: { title: string; dueDate: string | null }[];
   overdueTasks: { title: string; dueDate: string | null }[];
   followUpLeads: { companyName: string; nextFollowUp: string | null }[];
   meetingsToday: { title: string; dueDate: string | null }[];
@@ -29,6 +30,11 @@ interface DigestContent {
 
 function renderDigest(content: DigestContent): string {
   const lines: string[] = ["Your Fairway CRM reminders:", ""];
+  if (content.todayTasks.length) {
+    lines.push("Today's tasks:");
+    for (const t of content.todayTasks) lines.push(`  - ${t.title} (due ${t.dueDate ?? "—"})`);
+    lines.push("");
+  }
   if (content.overdueTasks.length) {
     lines.push("Overdue tasks:");
     for (const t of content.overdueTasks) lines.push(`  - ${t.title} (due ${t.dueDate ?? "—"})`);
@@ -46,7 +52,12 @@ function renderDigest(content: DigestContent): string {
     for (const m of content.meetingsToday) lines.push(`  - ${m.title}`);
     lines.push("");
   }
-  if (!content.overdueTasks.length && !content.followUpLeads.length && !content.meetingsToday.length) {
+  if (
+    !content.todayTasks.length &&
+    !content.overdueTasks.length &&
+    !content.followUpLeads.length &&
+    !content.meetingsToday.length
+  ) {
     lines.push("Nothing overdue — you're all caught up.");
   }
   return lines.join("\n");
@@ -95,30 +106,42 @@ export async function GET(request: Request): Promise<Response> {
     });
     if (optedIn.length === 0) continue;
 
-    const [{ data: overdueTasks }, { data: followUpLeads }, { data: meetingsToday }] = await Promise.all([
-      db
-        .from("tasks")
-        .select("title, due_date")
-        .eq("workspace_id", workspaceId)
-        .eq("is_done", false)
-        .lt("due_date", today),
-      db
-        .from("leads")
-        .select("company_name, next_follow_up")
-        .eq("workspace_id", workspaceId)
-        .not("status", "in", "(won,lost)")
-        .lte("next_follow_up", today)
-        .not("next_follow_up", "is", null),
-      db
-        .from("tasks")
-        .select("title, due_date")
-        .eq("workspace_id", workspaceId)
-        .eq("type", "meeting")
-        .eq("is_done", false)
-        .eq("due_date", today),
-    ]);
+    const [{ data: todayTasks }, { data: overdueTasks }, { data: followUpLeads }, { data: meetingsToday }] =
+      await Promise.all([
+        db
+          .from("tasks")
+          .select("title, due_date")
+          .eq("workspace_id", workspaceId)
+          .eq("is_done", false)
+          .is("cancelled_at", null)
+          .neq("type", "meeting")
+          .eq("due_date", today),
+        db
+          .from("tasks")
+          .select("title, due_date")
+          .eq("workspace_id", workspaceId)
+          .eq("is_done", false)
+          .is("cancelled_at", null)
+          .lt("due_date", today),
+        db
+          .from("leads")
+          .select("company_name, next_follow_up")
+          .eq("workspace_id", workspaceId)
+          .not("status", "in", "(won,lost)")
+          .lte("next_follow_up", today)
+          .not("next_follow_up", "is", null),
+        db
+          .from("tasks")
+          .select("title, due_date")
+          .eq("workspace_id", workspaceId)
+          .eq("type", "meeting")
+          .eq("is_done", false)
+          .is("cancelled_at", null)
+          .eq("due_date", today),
+      ]);
 
     const content: DigestContent = {
+      todayTasks: (todayTasks ?? []).map((t) => ({ title: t.title as string, dueDate: t.due_date as string })),
       overdueTasks: (overdueTasks ?? []).map((t) => ({ title: t.title as string, dueDate: t.due_date as string })),
       followUpLeads: (followUpLeads ?? []).map((l) => ({
         companyName: l.company_name as string,

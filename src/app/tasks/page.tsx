@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, Plus, RotateCcw, Trash2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -73,9 +73,28 @@ function validateTaskForm(form: TaskForm): Record<string, string> {
   return errors;
 }
 
+const BUCKETS = ["all", "today", "upcoming", "overdue"] as const;
+type Bucket = (typeof BUCKETS)[number];
+
+const BUCKET_LABELS: Record<Bucket, string> = {
+  all: "All",
+  today: "Today",
+  upcoming: "Upcoming",
+  overdue: "Overdue",
+};
+
 export default function TasksPage() {
-  const { tasks, toggleTask, addTask, removeTask, companies, contacts, leads } =
-    useCrm();
+  const {
+    tasks,
+    toggleTask,
+    addTask,
+    removeTask,
+    rescheduleTask,
+    cancelTask,
+    companies,
+    contacts,
+    leads,
+  } = useCrm();
   const today = useToday();
 
   // Suggestions for the "Related to" free-text field: real record names,
@@ -92,23 +111,37 @@ export default function TasksPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [priorityFilter, setPriorityFilter] = useState<string>(ALL);
+  const [bucketFilter, setBucketFilter] = useState<Bucket>("all");
 
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState<TaskForm>(emptyTaskForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Task | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<Task | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
 
   // Command palette "New task" (/tasks?new=1).
   useOpenFromQuery("new", () => setAddOpen(true));
 
   const counts = useMemo(() => {
-    const open = tasks.filter((t) => !t.done);
+    const open = tasks.filter((t) => !t.done && !t.cancelledAt);
     return {
       open: open.length,
-      done: tasks.length - open.length,
+      done: tasks.filter((t) => t.done).length,
+      today: open.filter((t) => t.dueDate === today).length,
+      upcoming: open.filter((t) => t.dueDate > today).length,
       overdue: open.filter((t) => isOverdue(t.dueDate, today)).length,
     };
   }, [tasks, today]);
+
+  function matchesBucket(task: Task): boolean {
+    if (bucketFilter === "all") return true;
+    if (task.done || task.cancelledAt) return false;
+    if (bucketFilter === "today") return task.dueDate === today;
+    if (bucketFilter === "upcoming") return task.dueDate > today;
+    return isOverdue(task.dueDate, today);
+  }
 
   const filtered = useMemo(() => {
     return tasks
@@ -116,19 +149,22 @@ export default function TasksPage() {
         if (statusFilter === "open" && task.done) return false;
         if (statusFilter === "done" && !task.done) return false;
         if (priorityFilter !== ALL && task.priority !== priorityFilter) return false;
+        if (!matchesBucket(task)) return false;
         return true;
       })
       .sort((a, b) => {
         if (a.done !== b.done) return a.done ? 1 : -1;
         return a.dueDate.localeCompare(b.dueDate);
       });
-  }, [tasks, statusFilter, priorityFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- matchesBucket closes over bucketFilter/today, listed below
+  }, [tasks, statusFilter, priorityFilter, bucketFilter, today]);
 
-  const filtersActive = statusFilter !== ALL || priorityFilter !== ALL;
+  const filtersActive = statusFilter !== ALL || priorityFilter !== ALL || bucketFilter !== "all";
 
   function resetFilters() {
     setStatusFilter(ALL);
     setPriorityFilter(ALL);
+    setBucketFilter("all");
   }
 
   function setField<K extends keyof TaskForm>(key: K, value: TaskForm[K]) {
@@ -156,6 +192,7 @@ export default function TasksPage() {
       priority: form.priority,
       type: form.type,
       done: false,
+      cancelledAt: null,
     };
     addTask(task);
     setForm(emptyTaskForm);
@@ -168,7 +205,7 @@ export default function TasksPage() {
     <div className="space-y-6">
       <PageHeader
         title="Tasks"
-        description={`${counts.open} open · ${counts.overdue} overdue · ${counts.done} completed`}
+        description={`${counts.today} today · ${counts.upcoming} upcoming · ${counts.overdue} overdue · ${counts.done} completed`}
         actions={
           <Button onClick={() => setAddOpen(true)}>
             <Plus aria-hidden="true" />
@@ -180,6 +217,21 @@ export default function TasksPage() {
       <Card>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
+            <Select
+              value={bucketFilter}
+              onValueChange={(v) => setBucketFilter(v as Bucket)}
+            >
+              <SelectTrigger className="w-36" aria-label="Filter by due date">
+                {BUCKET_LABELS[bucketFilter]}
+              </SelectTrigger>
+              <SelectContent>
+                {BUCKETS.map((bucket) => (
+                  <SelectItem key={bucket} value={bucket}>
+                    {BUCKET_LABELS[bucket]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(String(v))}
@@ -248,7 +300,8 @@ export default function TasksPage() {
           ) : (
             <ul className="divide-y divide-border">
               {filtered.map((task) => {
-                const overdue = !task.done && isOverdue(task.dueDate, today);
+                const cancelled = Boolean(task.cancelledAt);
+                const overdue = !task.done && !cancelled && isOverdue(task.dueDate, today);
                 return (
                   <li
                     key={task.id}
@@ -256,6 +309,7 @@ export default function TasksPage() {
                   >
                     <Checkbox
                       checked={task.done}
+                      disabled={cancelled}
                       aria-label={`Mark "${task.title}" as ${
                         task.done ? "open" : "complete"
                       }`}
@@ -273,7 +327,7 @@ export default function TasksPage() {
                       <p
                         className={cn(
                           "text-sm font-medium",
-                          task.done && "text-muted-foreground line-through",
+                          (task.done || cancelled) && "text-muted-foreground line-through",
                         )}
                       >
                         {task.title}
@@ -287,7 +341,7 @@ export default function TasksPage() {
                         )}
                       >
                         {task.relatedTo} · due {formatDate(task.dueDate)}
-                        {overdue ? " · overdue" : ""}
+                        {cancelled ? " · cancelled" : overdue ? " · overdue" : ""}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -295,6 +349,29 @@ export default function TasksPage() {
                         {TASK_TYPE_LABELS[task.type]}
                       </span>
                       <PriorityBadge priority={task.priority} />
+                      {!task.done && !cancelled ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Reschedule "${task.title}"`}
+                            onClick={() => {
+                              setRescheduleDate(task.dueDate);
+                              setRescheduleTarget(task);
+                            }}
+                          >
+                            <CalendarClock aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Cancel "${task.title}"`}
+                            onClick={() => setCancelTarget(task)}
+                          >
+                            <XCircle aria-hidden="true" />
+                          </Button>
+                        </>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -427,6 +504,64 @@ export default function TasksPage() {
           setDeleteTarget(null);
         }}
       />
+
+      <ConfirmDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCancelTarget(null);
+        }}
+        title="Cancel task?"
+        description={
+          cancelTarget
+            ? `"${cancelTarget.title}" will be marked cancelled and kept for your records. It will not be regenerated.`
+            : ""
+        }
+        confirmLabel="Cancel task"
+        onConfirm={() => {
+          if (!cancelTarget) return;
+          cancelTask(cancelTarget.id);
+          toast.success(`"${cancelTarget.title}" cancelled.`);
+          setCancelTarget(null);
+        }}
+      />
+
+      <Dialog
+        open={rescheduleTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRescheduleTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reschedule task</DialogTitle>
+            <DialogDescription>
+              {rescheduleTarget ? `Pick a new due date for "${rescheduleTarget.title}".` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="date"
+            value={rescheduleDate}
+            onChange={(e) => setRescheduleDate(e.target.value)}
+            aria-label="New due date"
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRescheduleTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!rescheduleTarget || !rescheduleDate) return;
+                rescheduleTask(rescheduleTarget.id, rescheduleDate);
+                toast.success(`"${rescheduleTarget.title}" rescheduled to ${formatDate(rescheduleDate)}.`);
+                setRescheduleTarget(null);
+              }}
+              disabled={!rescheduleDate}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

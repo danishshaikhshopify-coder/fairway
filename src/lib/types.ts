@@ -61,6 +61,8 @@ export interface Lead {
   followUpEvidence: string;
   qualification: Qualification;
   recommendedAction: string;
+  /** Stops follow-up task generation for this lead until resumed. */
+  cadencePaused: boolean;
 }
 
 export interface Company {
@@ -104,6 +106,8 @@ export interface Task {
   type: TaskType;
   done: boolean;
   relatedTo: string;
+  /** Soft-cancelled: kept (not deleted) so it can never be auto-regenerated. */
+  cancelledAt: string | null;
 }
 
 export interface Activity {

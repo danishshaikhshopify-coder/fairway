@@ -43,6 +43,8 @@ import type {
 import { getSupabase, isLiveMode } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import {
+  cancelTask as cancelTaskRow,
+  completeTask,
   insertActivity,
   insertCompany,
   insertContact,
@@ -56,6 +58,7 @@ import {
   loadWorkspaceContext,
   moveLead as moveLeadRow,
   removeRow,
+  rescheduleTask as rescheduleTaskRow,
   setTaskDone,
   updateCompany as updateCompanyRow,
   updateContact as updateContactRow,
@@ -86,6 +89,8 @@ interface CrmContextValue {
   moveLead: (id: string, status: LeadStatus) => void;
   setLeadStatuses: (ids: string[], status: LeadStatus) => void;
   toggleTask: (id: string) => void;
+  rescheduleTask: (id: string, dueDate: string) => void;
+  cancelTask: (id: string) => void;
   removeLead: (id: string) => void;
   removeCompany: (id: string) => void;
   removeContact: (id: string) => void;
@@ -314,6 +319,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     });
   }, [persist]);
 
+  // Completing (not reopening) goes through the server: a cadence-generated
+  // task's completion also schedules the lead's next step (see
+  // /api/tasks/complete), which a plain client-side RLS write cannot do
+  // without duplicating that date math here. Reopening has no such side
+  // effect, so it stays a simple direct write, same as every other toggle.
   const toggleTask = useCallback((id: string) => {
     let nowDone = false;
     setTasks((prev) =>
@@ -323,9 +333,31 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         return { ...t, done: nowDone };
       }),
     );
-    persist("toggleTask", () => {
+    persist("toggleTask", async () => {
+      if (nowDone) {
+        const { nextTask } = await completeTask(id);
+        if (nextTask) setTasks((prev) => [nextTask, ...prev]);
+        return;
+      }
       const db = getSupabase();
-      return db ? setTaskDone(db, id, nowDone) : Promise.resolve();
+      if (db) await setTaskDone(db, id, false);
+    });
+  }, [persist]);
+
+  const rescheduleTask = useCallback((id: string, dueDate: string) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, dueDate } : t)));
+    persist("rescheduleTask", () => {
+      const db = getSupabase();
+      return db ? rescheduleTaskRow(db, id, dueDate) : Promise.resolve();
+    });
+  }, [persist]);
+
+  const cancelTask = useCallback((id: string) => {
+    const cancelledAt = new Date().toISOString();
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, cancelledAt } : t)));
+    persist("cancelTask", () => {
+      const db = getSupabase();
+      return db ? cancelTaskRow(db, id) : Promise.resolve();
     });
   }, [persist]);
 
@@ -373,6 +405,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       moveLead,
       setLeadStatuses,
       toggleTask,
+      rescheduleTask,
+      cancelTask,
       removeLead,
       removeCompany,
       removeContact,
@@ -398,6 +432,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       moveLead,
       setLeadStatuses,
       toggleTask,
+      rescheduleTask,
+      cancelTask,
       removeLead,
       removeCompany,
       removeContact,

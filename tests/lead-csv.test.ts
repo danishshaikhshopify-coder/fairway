@@ -54,6 +54,7 @@ test("export then import round-trips every lead", () => {
       followUpEvidence: "",
       qualification: "Pending",
       recommendedAction: "",
+      cadencePaused: false,
     },
   ] satisfies Lead[];
 

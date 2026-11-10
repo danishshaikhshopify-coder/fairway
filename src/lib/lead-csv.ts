@@ -245,6 +245,7 @@ export function importLeadsCsv(
         followUpEvidence: "No follow-up history captured yet.",
         qualification: "Pending",
         recommendedAction: "Run a first discovery call and capture qualification notes.",
+        cadencePaused: false,
       };
       result.valid.push(row);
     } else {

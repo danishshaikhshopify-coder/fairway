@@ -92,6 +92,7 @@ export function rowToLead(r: Record<string, unknown>): Lead {
     followUpEvidence: asStr(r.follow_up_evidence),
     qualification: asStr(r.qualification) as Qualification,
     recommendedAction: asStr(r.recommended_action),
+    cadencePaused: r.cadence_paused === true,
   };
 }
 
@@ -143,6 +144,7 @@ export function rowToTask(r: Record<string, unknown>): Task {
     type: asStr(r.type) as TaskType,
     done: r.is_done === true,
     relatedTo: asStr(r.related_to),
+    cancelledAt: r.cancelled_at == null ? null : asStr(r.cancelled_at),
   };
 }
 
@@ -220,6 +222,7 @@ export function leadToRow(
     owner_id: dir.membersByName.get(lead.owner) ?? null,
     last_contact: lead.lastContact || null,
     next_follow_up: lead.nextFollowUp || null,
+    cadence_paused: lead.cadencePaused,
   };
 }
 
@@ -273,6 +276,7 @@ export function taskToRow(task: Omit<Task, "id">): Record<string, unknown> {
     is_done: task.done,
     related_to: task.relatedTo,
     completed_at: task.done ? new Date().toISOString() : null,
+    cancelled_at: task.cancelledAt || null,
   };
 }
 
@@ -316,6 +320,7 @@ const LEAD_UI_TO_DB: Record<string, string> = {
   followUpEvidence: "follow_up_evidence",
   qualification: "qualification",
   recommendedAction: "recommended_action",
+  cadencePaused: "cadence_paused",
 };
 
 const COMPANY_UI_TO_DB: Record<string, string> = {

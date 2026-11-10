@@ -63,7 +63,7 @@ const ownerEmbed = (fk: string) => `${fk}(user_id, profile:profiles(full_name))`
 const LEAD_COLUMNS: any =
   "id, company_name, contact_name, email, phone, status, score, fit_score, " +
   "business_type, value, qualification, evidence, follow_up_evidence, " +
-  "recommended_action, last_contact, next_follow_up, " +
+  "recommended_action, last_contact, next_follow_up, cadence_paused, " +
   `source:lead_sources(name), owner:${ownerEmbed(LEAD_OWNER)}`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,8 +78,8 @@ const CONTACT_COLUMNS: any =
   `company:companies(name), owner:${ownerEmbed(CONTACT_OWNER)}`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const TASK_COLUMNS: any =
-  "id, title, due_date, priority, type, is_done, related_to";
+export const TASK_COLUMNS: any =
+  "id, title, due_date, priority, type, is_done, related_to, cancelled_at";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ACTIVITY_COLUMNS: any =
@@ -300,6 +300,45 @@ export async function setTaskDone(
   if (error) throw new Error(`setTaskDone: ${error.message}`);
 }
 
+export async function rescheduleTask(
+  db: SupabaseClient,
+  id: string,
+  dueDate: string,
+): Promise<void> {
+  const { error } = await db.from("tasks").update({ due_date: dueDate || null }).eq("id", id);
+  if (error) throw new Error(`rescheduleTask: ${error.message}`);
+}
+
+/** Soft-cancel: keeps the row (see tasks_cadence_dedupe_idx) so a cancelled
+ * cadence step can never be auto-regenerated. Distinct from removeRow. */
+export async function cancelTask(db: SupabaseClient, id: string): Promise<void> {
+  const { error } = await db
+    .from("tasks")
+    .update({ cancelled_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(`cancelTask: ${error.message}`);
+}
+
+/** Marks a task done through the server route that also advances the
+ * lead's follow-up cadence to its next step, if the task was one. */
+export async function completeTask(
+  id: string,
+): Promise<{ task: Task; nextTask: Task | null }> {
+  const res = await fetch("/api/tasks/complete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body?.message || body?.error || "completeTask failed");
+  }
+  return {
+    task: rowToTask(body.task as Record<string, unknown>),
+    nextTask: body.nextTask ? rowToTask(body.nextTask as Record<string, unknown>) : null,
+  };
+}
+
 export async function insertActivity(
   db: SupabaseClient,
   ctx: WorkspaceContext,
@@ -398,6 +437,7 @@ function blankLead(): New<Lead> {
     followUpEvidence: "",
     qualification: "Pending",
     recommendedAction: "",
+    cadencePaused: false,
   };
 }
 

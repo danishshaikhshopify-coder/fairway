@@ -51,6 +51,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -374,6 +375,7 @@ export default function LeadsPage() {
       followUpEvidence: "No follow-up history captured yet.",
       qualification: "Pending",
       recommendedAction: "Run a first discovery call and capture qualification notes.",
+      cadencePaused: false,
     };
     if (editingId) {
       updateLead(editingId, {
@@ -1012,6 +1014,26 @@ export default function LeadsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <div>
+                    <p className="font-medium">Follow-up cadence</p>
+                    <p className="text-xs text-muted-foreground">
+                      {detailLead.cadencePaused
+                        ? "Paused — no new follow-up tasks will be generated."
+                        : "Active — generates follow-up tasks automatically."}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={!detailLead.cadencePaused}
+                    onCheckedChange={(checked) =>
+                      updateLead(detailLead.id, { cadencePaused: !checked })
+                    }
+                    aria-label="Follow-up cadence active"
+                  />
+                </div>
+
+                <Separator />
 
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">

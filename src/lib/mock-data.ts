@@ -166,7 +166,7 @@ export const MOCK_CONTACTS: Contact[] = [
   { id: "ct-10", name: "Lucia Moreno", company: "Sierra Green Golf", title: "Sales Lead", email: "lucia@sierragreen.example", phone: "+52 81 5550 0199", owner: "C. Navarro", linkedinUrl: "", instagramUrl: "", facebookUrl: "" },
 ];
 
-export const MOCK_LEADS: Lead[] = [
+const RAW_MOCK_LEADS: Omit<Lead, "cadencePaused">[] = [
   {
     id: "ld-1", company: "Apex Indoor Golf", contact: "Marcus Hale", email: "marcus@apexindoor.example", phone: "+1 303 555 0142",
     source: "Referral", status: "proposal", score: 92, fitScore: 91, businessType: "Both", value: 84000, owner: "A. Rivera",
@@ -265,7 +265,9 @@ export const MOCK_LEADS: Lead[] = [
   },
 ];
 
-export const MOCK_TASKS: Task[] = [
+export const MOCK_LEADS: Lead[] = RAW_MOCK_LEADS.map((lead) => ({ ...lead, cadencePaused: false }));
+
+const RAW_MOCK_TASKS: Omit<Task, "cancelledAt">[] = [
   { id: "tk-1", title: "Send financing one-pager to Apex Indoor Golf", dueDate: "2026-10-20", priority: "high", type: "email", done: false, relatedTo: "Apex Indoor Golf" },
   { id: "tk-2", title: "Discovery call with Baja Golf Studio", dueDate: "2026-10-21", priority: "medium", type: "call", done: false, relatedTo: "Baja Golf Studio" },
   { id: "tk-3", title: "Wholesale pricing sheet for Fairway Golf Solutions", dueDate: "2026-10-23", priority: "high", type: "email", done: false, relatedTo: "Fairway Golf Solutions" },
@@ -277,6 +279,8 @@ export const MOCK_TASKS: Task[] = [
   { id: "tk-9", title: "Send Spanish collateral to Sierra Green", dueDate: "2026-10-17", priority: "high", type: "email", done: true, relatedTo: "Sierra Green Golf" },
   { id: "tk-10", title: "Prepare Q4 pipeline review deck", dueDate: "2026-10-30", priority: "low", type: "admin", done: false, relatedTo: "Internal" },
 ];
+
+export const MOCK_TASKS: Task[] = RAW_MOCK_TASKS.map((task) => ({ ...task, cancelledAt: null }));
 
 export const MOCK_ACTIVITIES: Activity[] = [
   { id: "ac-1", type: "call", subject: "Discovery call — 22 min, asked about financing", date: "2026-10-21T15:10", owner: "A. Rivera", relatedTo: "Apex Indoor Golf" },

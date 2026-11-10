@@ -33,6 +33,7 @@ import {
 } from "@/lib/supabase/repository";
 import { IntegrationsPanel } from "@/components/crm/integrations-panel";
 import { TeamPanel } from "@/components/crm/team-panel";
+import { CadencePanel } from "@/components/crm/cadence-panel";
 
 const TIMEZONES = [
   "America/New_York",
@@ -194,6 +195,7 @@ export default function SettingsPage() {
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="crm">CRM</TabsTrigger>
+          <TabsTrigger value="follow-ups">Follow-ups</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
@@ -422,6 +424,10 @@ export default function SettingsPage() {
               <SaveBar onSave={saveCrmPreferences} />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="follow-ups">
+          <CadencePanel />
         </TabsContent>
 
         <TabsContent value="integrations">
