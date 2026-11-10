@@ -53,7 +53,7 @@ describe("Login page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(auth.signInWithPassword).not.toHaveBeenCalled();
     expect(screen.getByText("Enter a valid email address.")).toBeTruthy();
-    expect(screen.getByText("Password must be at least 6 characters.")).toBeTruthy();
+    expect(screen.getByText("Enter your password.")).toBeTruthy();
     expect(emailInput().getAttribute("aria-invalid")).toBe("true");
   });
 
@@ -96,45 +96,16 @@ describe("Login page", () => {
     expect(router.replace).not.toHaveBeenCalled();
   });
 
-  it("switches to sign-up and sends the full name as metadata", async () => {
-    auth.signUp.mockResolvedValue({
-      data: { session: { user: { id: "user-1" } } },
-      error: null,
-    });
+  // Fairway CRM is invite-only (Phase 2): the page never offers a self-serve
+  // "create account" path. auth.signUp stays a mock on the client only so an
+  // unexpected call is still observable — nothing here exercises it.
+  it("never offers a sign-up path: invite-only notice only, no Create account control", () => {
     render(<LoginPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-    expect(screen.getByRole("heading", { name: "Create your account" })).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText(/^Full name/), {
-      target: { value: "  Ada Lovelace " },
-    });
-    fillCredentials("ada@example.com", "secret1");
-    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-
-    await waitFor(() =>
-      expect(auth.signUp).toHaveBeenCalledWith({
-        email: "ada@example.com",
-        password: "secret1",
-        options: { data: { full_name: "Ada Lovelace" } },
-      }),
-    );
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
-  });
-
-  it("falls back to sign-in when signup returns no session", async () => {
-    auth.signUp.mockResolvedValue({ data: { session: null }, error: null });
-    render(<LoginPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-    fireEvent.change(screen.getByLabelText(/^Full name/), {
-      target: { value: "Ada Lovelace" },
-    });
-    fillCredentials("ada@example.com", "secret1");
-    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-
-    await waitFor(() =>
-      expect(screen.getByText("Check your inbox to confirm your address, then sign in.")).toBeTruthy(),
-    );
-    expect(router.replace).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create account" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Create your account" })).toBeNull();
+    expect(
+      screen.getByText("Fairway CRM is invite-only. Ask your admin for an invite."),
+    ).toBeTruthy();
+    expect(auth.signUp).not.toHaveBeenCalled();
   });
 });
