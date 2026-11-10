@@ -71,8 +71,8 @@ export default function SettingsPage() {
   const { owners } = useCrm();
 
   const [profile, setProfile] = useState({
-    name: "Alex Rivera",
-    email: "alex@fairwaycrm.example",
+    name: isLiveMode() ? "" : "Alex Rivera",
+    email: isLiveMode() ? "" : "alex@fairwaycrm.example",
     timezone: "America/Chicago",
   });
 
@@ -131,6 +131,20 @@ export default function SettingsPage() {
       clearTimeout(timer);
     };
   }, [userId]);
+
+  // Live mode only: show the real signed-in email instead of the demo
+  // placeholder. Name has no source yet (no profiles.full_name column), so it
+  // stays blank rather than showing someone else's name. Deferred one tick,
+  // same set-state-in-effect reason as the preferences load above.
+  useEffect(() => {
+    if (!live) return;
+    const email = session?.user.email;
+    if (!email) return;
+    const timer = setTimeout(() => {
+      setProfile((p) => ({ ...p, email }));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [live, session]);
 
   function save(label: string) {
     // Nothing here is persisted (no backend yet), so never claim success.
