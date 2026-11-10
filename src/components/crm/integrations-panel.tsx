@@ -6,7 +6,7 @@
 // a connected mailbox to test against. Instagram/LinkedIn are blocked by
 // the platforms themselves; see each card's description.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, Mail, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -519,11 +519,11 @@ function GmailCard() {
         ) : null}
 
         {status?.connected ? (
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm">
               Connected as <span className="font-medium text-foreground">{status.email}</span>
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={syncInbox} disabled={syncing || loading}>
                 <RefreshCw className={syncing ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
                 Sync inbox
@@ -575,21 +575,37 @@ function PlaceholderIntegrationCard({
   );
 }
 
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+      {children}
+    </h3>
+  );
+}
+
 export function IntegrationsPanel() {
   return (
-    <div className="space-y-4">
-      <GoogleSheetsCard />
-      <GmailCard />
-      <PlaceholderIntegrationCard
-        title="Instagram"
-        status="Blocked"
-        description="Instagram's Messaging API only reaches people who messaged your business first, and requires a Meta app in App Review plus a linked Instagram professional account. There is no API for a CRM to start new Instagram DMs from here."
-      />
-      <PlaceholderIntegrationCard
-        title="LinkedIn"
-        status="Blocked"
-        description="LinkedIn does not offer a public messaging API to third-party apps at all — only a small set of approved partners (e.g. certain ATS/CRM partners) can send LinkedIn messages programmatically. This cannot be built without LinkedIn accepting Fairway CRM into that partner program."
-      />
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <SectionHeading>Connected &amp; configurable</SectionHeading>
+        <GoogleSheetsCard />
+        <GmailCard />
+      </div>
+
+      <div className="space-y-4">
+        <SectionHeading>Not available</SectionHeading>
+        <PlaceholderIntegrationCard
+          title="Instagram"
+          status="Blocked"
+          description="Instagram's Messaging API only reaches people who messaged your business first, and requires a Meta app in App Review plus a linked Instagram professional account. There is no API for a CRM to start new Instagram DMs from here."
+        />
+        <PlaceholderIntegrationCard
+          title="LinkedIn"
+          status="Blocked"
+          description="LinkedIn does not offer a public messaging API to third-party apps at all — only a small set of approved partners (e.g. certain ATS/CRM partners) can send LinkedIn messages programmatically. This cannot be built without LinkedIn accepting Fairway CRM into that partner program."
+        />
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-medium">
