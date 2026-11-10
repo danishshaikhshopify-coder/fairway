@@ -109,7 +109,7 @@ export default function LeadIntelligencePage() {
       <PageHeader title="Lead intelligence" />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <motion.div variants={fadeUp}>
+        <motion.div variants={fadeUp} className="min-w-0">
         <Card>
           <CardContent className="overflow-x-auto p-0 sm:p-4">
             <Table>
