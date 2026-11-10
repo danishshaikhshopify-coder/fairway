@@ -42,3 +42,7 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# local tooling/session state, not part of the app
+/.claude/
+/unslop/
