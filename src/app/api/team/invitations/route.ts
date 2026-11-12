@@ -11,6 +11,7 @@
 // password at /invite/accept.
 
 import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
+import { AppUrlConfigError, getAppUrl } from "@/lib/app-url";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import { validateInviteInput } from "@/lib/team/invites";
 
@@ -63,7 +64,18 @@ export async function POST(request: Request): Promise<Response> {
     return serverError(insertError.message);
   }
 
-  const origin = new URL(request.url).origin;
+  let origin: string;
+  try {
+    origin = getAppUrl();
+  } catch (error) {
+    await db.from("invitations").delete().eq("id", invitation.id);
+    return serverError(
+      error instanceof AppUrlConfigError
+        ? error.message
+        : "Application URL is not configured.",
+    );
+  }
+
   const { error: inviteError } = await db.auth.admin.inviteUserByEmail(email, {
     redirectTo: `${origin}/invite/accept`,
   });
