@@ -36,14 +36,67 @@ export default function AcceptInvitePage() {
     const db = getSupabase();
     if (!db) return;
 
-    const code = new URLSearchParams(window.location.search).get("code");
-    if (!code) {
-      // Supabase's older (implicit) invite links land with #access_token=...
-      // instead of ?code=; the client picks that session up on its own.
-      db.auth.getSession().then(({ data }) => {
-        setStage(data.session ? "ready" : "error");
-        if (!data.session) setError("This invite link is missing or has expired.");
+    // Supabase reports a bad/reused/expired link via `error_description`, on
+    // either the query string or the hash (implicit-flow redirects use the
+    // hash). Surface that instead of guessing, so a Dashboard allow-list
+    // mismatch doesn't look identical to a genuinely expired token.
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const linkError = search.get("error_description") ?? hash.get("error_description");
+    if (linkError) {
+      setTimeout(() => {
+        setStage("error");
+        setError(linkError);
+      }, 0);
+      return;
+    }
+
+    // This page is reached only by an admin-generated invite link — never by
+    // a flow this browser itself started — so there is never a PKCE code
+    // verifier sitting in storage here. The shared client's *automatic*
+    // hash/code detection assumes one might exist and is pinned to
+    // flowType "pkce" (createBrowserClient forces this, unconditionally);
+    // it actively rejects an implicit `#access_token=` callback as a
+    // flow-type mismatch instead of just ignoring it, discarding a perfectly
+    // valid token. So this page reads the callback itself and calls the
+    // token-establishing methods directly: setSession() and verifyOtp() need
+    // no verifier at all, unlike the automatic path — confirmed against the
+    // installed @supabase/auth-js in src/test/supabase-invite-callback-flows.test.tsx.
+    const accessToken = hash.get("access_token");
+    const refreshToken = hash.get("refresh_token");
+    if (accessToken && refreshToken) {
+      db.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ error: sessionError }) => {
+        if (sessionError) {
+          setStage("error");
+          setError(sessionError.message);
+          return;
+        }
+        window.history.replaceState(null, "", window.location.pathname);
+        setStage("ready");
       });
+      return;
+    }
+
+    const tokenHash = search.get("token_hash") ?? hash.get("token_hash");
+    if (tokenHash) {
+      db.auth.verifyOtp({ token_hash: tokenHash, type: "invite" }).then(({ error: verifyError }) => {
+        if (verifyError) {
+          setStage("error");
+          setError(verifyError.message);
+          return;
+        }
+        window.history.replaceState(null, "", window.location.pathname);
+        setStage("ready");
+      });
+      return;
+    }
+
+    const code = search.get("code");
+    if (!code) {
+      setTimeout(() => {
+        setStage("error");
+        setError("This invite link is missing or has expired.");
+      }, 0);
       return;
     }
     db.auth.exchangeCodeForSession(code).then(({ error: exchangeError }) => {
