@@ -57,7 +57,15 @@ export async function POST(request: Request): Promise<Response> {
     .eq("id", id);
   if (updateError) return serverError(updateError.message);
 
-  await db.auth.admin.updateUserById(member.user_id, { ban_duration: PERMANENT_BAN });
+  const { error: banError } = await db.auth.admin.updateUserById(member.user_id, {
+    ban_duration: PERMANENT_BAN,
+  });
+  if (banError) {
+    // Not fatal — is_active = false already blocks every RLS-gated query —
+    // but it must not fail silently: log it so a stuck session (still valid
+    // until it expires/refreshes) can be investigated, not just assumed away.
+    console.error(`Remove: banning auth user ${member.user_id} failed: ${banError.message}`);
+  }
 
-  return Response.json({ removed: true });
+  return Response.json({ removed: true, authBanned: !banError });
 }

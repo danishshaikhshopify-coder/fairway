@@ -49,6 +49,29 @@ export async function POST(request: Request): Promise<Response> {
   const db = getServiceSupabase();
   if (!db) return serverError("Service role is not configured.");
 
+  // inviteUserByEmail() errors on an email Supabase Auth already knows about
+  // (any workspace, since auth.users is global) — but with a generic GoTrue
+  // message. Check first so a re-invite of an existing/removed member gets a
+  // clear, specific reason instead of a raw upstream error.
+  const { data: existingAuthUsers } = await db.auth.admin.listUsers();
+  const existingUser = existingAuthUsers?.users.find(
+    (u) => (u.email ?? "").toLowerCase() === email.toLowerCase(),
+  );
+  if (existingUser) {
+    const { data: existingMember } = await db
+      .from("workspace_members")
+      .select("is_active")
+      .eq("workspace_id", workspaceId)
+      .eq("user_id", existingUser.id)
+      .maybeSingle();
+    const message = existingMember
+      ? existingMember.is_active
+        ? "This person is already a member of this workspace."
+        : "This person was removed from this workspace and cannot be re-invited."
+      : "This email already has a Supabase account outside this workspace and cannot be invited.";
+    return Response.json({ error: "already_member", message }, { status: 409 });
+  }
+
   const { data: invitation, error: insertError } = await db
     .from("invitations")
     .insert({ workspace_id: workspaceId, email, role: inviteRole, invited_by: memberId })

@@ -42,6 +42,7 @@ interface Member {
   fullName: string;
   role: string;
   isActive: boolean;
+  banned: boolean;
   receivesReminders: boolean;
   gmailConnected: boolean;
   gmailEmail: string | null;
@@ -275,7 +276,7 @@ export function TeamPanel() {
                   <TableCell>{m.fullName || "—"}</TableCell>
                   <TableCell>{m.email ?? "—"}</TableCell>
                   <TableCell>
-                    {isOwner && m.role !== "owner" ? (
+                    {isOwner && m.role !== "owner" && !m.banned ? (
                       <Select
                         value={m.role}
                         onValueChange={(v) => patchMember(m.id, { role: v })}
@@ -300,6 +301,8 @@ export function TeamPanel() {
                   <TableCell>
                     {m.role === "owner" ? (
                       <Badge>Active</Badge>
+                    ) : m.banned ? (
+                      <Badge variant="outline">Removed</Badge>
                     ) : isOwner ? (
                       <Switch
                         checked={m.isActive}
@@ -312,7 +315,7 @@ export function TeamPanel() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {isOwner && m.role !== "owner" ? (
+                    {isOwner && m.role !== "owner" && !m.banned ? (
                       <Checkbox
                         checked={m.receivesReminders}
                         onCheckedChange={(checked) =>
@@ -336,7 +339,7 @@ export function TeamPanel() {
                   </TableCell>
                   {isOwner ? (
                     <TableCell>
-                      {m.role !== "owner" ? (
+                      {m.role !== "owner" && !m.banned ? (
                         <Button variant="ghost" size="sm" onClick={() => setRemoveTarget(m)}>
                           <Trash2 className="size-4" aria-hidden="true" />
                           Remove

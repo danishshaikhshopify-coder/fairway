@@ -56,12 +56,17 @@ export async function GET(): Promise<Response> {
   const members = (data as unknown as MemberRow[]).map((row) => {
     const authUser = authUsers?.users.find((u) => u.id === row.user_id);
     const gmail = gmailByMember.get(row.id);
+    // Remove (POST /api/team/members/remove) bans the Supabase Auth account on
+    // top of deactivating; a plain Deactivate toggle never sets banned_until.
+    // Surfacing it lets the UI tell "removed" apart from "just deactivated".
+    const banned = Boolean(authUser?.banned_until) && new Date(authUser!.banned_until!) > new Date();
     return {
       id: row.id,
       email: authUser?.email ?? null,
       fullName: row.profiles?.full_name ?? "",
       role: row.role,
       isActive: row.is_active,
+      banned,
       receivesReminders: Boolean(row.profiles?.daily_digest && row.profiles?.overdue_reminders),
       gmailConnected: Boolean(gmail?.connected_at),
       gmailEmail: (gmail?.email as string) ?? null,

@@ -22,17 +22,19 @@ const OWNER = {
   fullName: "Owner Person",
   role: "owner",
   isActive: true,
+  banned: false,
   receivesReminders: false,
   gmailConnected: false,
   gmailEmail: null,
 };
 
-const PARTNER = {
+const BASE_PARTNER = {
   id: "member-partner",
   email: "jane@fairway.test",
   fullName: "Jane Partner",
   role: "admin",
   isActive: true,
+  banned: false,
   receivesReminders: false,
   gmailConnected: false,
   gmailEmail: null,
@@ -42,16 +44,22 @@ function jsonResponse(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
 }
 
+// Mirrors what the real route pair does: a successful remove is reflected on
+// the NEXT GET — this is the exact thing regressing when the roster looks
+// unchanged after clicking Remove.
 function installFetch(removeImpl?: () => Response) {
+  let partner = { ...BASE_PARTNER };
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/team/members" && !init?.method) {
-      return jsonResponse({ members: [OWNER, PARTNER] });
+      return jsonResponse({ members: [OWNER, partner] });
     }
     if (url === "/api/team/invitations" && !init?.method) {
       return jsonResponse({ invitations: [] });
     }
     if (url === "/api/team/members/remove" && init?.method === "POST") {
-      return removeImpl ? removeImpl() : jsonResponse({ removed: true });
+      if (removeImpl) return removeImpl();
+      partner = { ...partner, isActive: false, banned: true };
+      return jsonResponse({ removed: true });
     }
     throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
   });
@@ -112,6 +120,32 @@ describe("Team panel — remove member", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     // GET /api/team/members and /api/team/invitations ran again after removal.
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBeforeRemoval + 1));
+
+    // The roster must visibly reflect the removal without a manual refresh:
+    // a "Removed" badge replaces the toggle, and Remove can't be clicked again.
+    await waitFor(() => expect(screen.getByText("Removed")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+  });
+
+  it("never offers Remove again for an already-removed member", async () => {
+    installFetch();
+    const removedMember = { ...BASE_PARTNER, isActive: false, banned: true };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/team/members" && !init?.method) {
+          return jsonResponse({ members: [OWNER, removedMember] });
+        }
+        if (url === "/api/team/invitations" && !init?.method) {
+          return jsonResponse({ invitations: [] });
+        }
+        throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+      }),
+    );
+    render(<TeamPanel />);
+    await screen.findByText("Jane Partner");
+    expect(screen.getByText("Removed")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
   });
 
   it("reports an error and leaves the roster alone when removal fails", async () => {
