@@ -70,3 +70,21 @@ export function validateMemberPatch(body: unknown): ValidationResult<MemberPatch
   }
   return { ok: true, value: patch };
 }
+
+/**
+ * Whether the caller (already confirmed to be the workspace owner by
+ * canManageTeam()) may remove this target member. The owner can never be
+ * removed, and a caller can never remove themselves — even an owner.
+ */
+export function canRemoveMember(
+  target: { id: string; role: string },
+  actingMemberId: string,
+): ValidationResult<true> {
+  if (target.role === "owner") {
+    return { ok: false, error: "The owner cannot be removed." };
+  }
+  if (target.id === actingMemberId) {
+    return { ok: false, error: "You cannot remove yourself." };
+  }
+  return { ok: true, value: true };
+}

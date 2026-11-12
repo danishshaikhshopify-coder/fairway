@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
@@ -75,6 +76,8 @@ export function TeamPanel() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<InvitableRole>("sales_rep");
   const [inviting, setInviting] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -134,6 +137,24 @@ export function TeamPanel() {
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update that member.");
+    }
+  }
+
+  async function confirmRemove() {
+    if (!removeTarget) return;
+    setRemoving(true);
+    try {
+      await api("/api/team/members/remove", {
+        method: "POST",
+        body: JSON.stringify({ id: removeTarget.id }),
+      });
+      toast.success(`Removed ${removeTarget.fullName || removeTarget.email || "that member"}.`);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove that member.");
+    } finally {
+      setRemoving(false);
+      setRemoveTarget(null);
     }
   }
 
@@ -245,6 +266,7 @@ export function TeamPanel() {
                 <TableHead>Active</TableHead>
                 <TableHead>Reminder emails</TableHead>
                 <TableHead>Gmail</TableHead>
+                {isOwner ? <TableHead /> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -312,11 +334,21 @@ export function TeamPanel() {
                       <span className="text-sm text-muted-foreground">Not connected</span>
                     )}
                   </TableCell>
+                  {isOwner ? (
+                    <TableCell>
+                      {m.role !== "owner" ? (
+                        <Button variant="ghost" size="sm" onClick={() => setRemoveTarget(m)}>
+                          <Trash2 className="size-4" aria-hidden="true" />
+                          Remove
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
               {!loading && members.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={isOwner ? 7 : 6} className="text-center text-sm text-muted-foreground">
                     No members yet.
                   </TableCell>
                 </TableRow>
@@ -331,6 +363,21 @@ export function TeamPanel() {
           ) : null}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !removing) setRemoveTarget(null);
+        }}
+        title="Remove this member?"
+        description={
+          removeTarget
+            ? `${removeTarget.fullName || "This member"} (${removeTarget.email ?? "no email"}) will immediately lose CRM access. Their past leads, tasks and activities are kept.`
+            : ""
+        }
+        confirmLabel="Remove"
+        onConfirm={confirmRemove}
+      />
     </div>
   );
 }
