@@ -49,41 +49,41 @@
 }
 
 :root {
-  /* Light palette: tinted neutral surfaces, white cards, fairway-green accent. */
-  --background: oklch(0.985 0.003 148);
+  /* Light palette: true-neutral surfaces, white cards, burnt-orange accent. */
+  --background: oklch(0.985 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.32 0.1 150);
-  --primary-foreground: oklch(0.985 0.01 145);
-  --secondary: oklch(0.955 0.004 148);
+  --primary: oklch(0.52 0.14 42);
+  --primary-foreground: oklch(0.99 0.01 42);
+  --secondary: oklch(0.96 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.955 0.004 148);
-  --muted-foreground: oklch(0.52 0.004 148);
-  --accent: oklch(0.955 0.004 148);
+  --muted: oklch(0.96 0 0);
+  --muted-foreground: oklch(0.52 0 0);
+  --accent: oklch(0.96 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.905 0.003 148);
-  --input: oklch(0.905 0.003 148);
-  --ring: oklch(0.48 0.12 150);
-  /* chart-1/2 carry real meaning (brand green, sand secondary series);
-     chart-3..5 are neutral steps for anything beyond a two-series chart. */
-  --chart-1: oklch(0.32 0.1 150);
-  --chart-2: oklch(0.72 0.09 80);
+  --border: oklch(0.905 0 0);
+  --input: oklch(0.905 0 0);
+  --ring: oklch(0.58 0.14 42);
+  /* chart-1 is the brand accent; chart-2 keeps one desaturated secondary
+     series for continuity; chart-3..5 are neutral steps. */
+  --chart-1: oklch(0.52 0.14 42);
+  --chart-2: oklch(0.6 0.03 150);
   --chart-3: oklch(0.556 0 0);
   --chart-4: oklch(0.439 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.995 0.001 148);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.995 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.32 0.1 150);
-  --sidebar-primary-foreground: oklch(0.985 0.01 145);
-  --sidebar-accent: oklch(0.955 0.004 148);
+  --sidebar-primary: oklch(0.52 0.14 42);
+  --sidebar-primary-foreground: oklch(0.99 0.01 42);
+  --sidebar-accent: oklch(0.96 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.905 0.003 148);
-  --sidebar-ring: oklch(0.48 0.12 150);
+  --sidebar-border: oklch(0.905 0 0);
+  --sidebar-ring: oklch(0.58 0.14 42);
   /* Glass surfaces (sidebar, header, popovers, dialogs): translucent card tone
      over backdrop-blur, a hairline a touch stronger than --border, and a soft
      neutral shadow for depth without a colored glow. */
@@ -97,39 +97,39 @@
 }
 
 .dark {
-  /* Dark palette: same layering, brighter green accent for contrast. */
-  --background: oklch(0.135 0.005 150);
+  /* Dark palette: true ink background, burnt-orange accent for contrast. */
+  --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.185 0.006 150);
+  --card: oklch(0.19 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.185 0.006 150);
+  --popover: oklch(0.19 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.8 0.155 150);
-  --primary-foreground: oklch(0.19 0.05 150);
-  --secondary: oklch(0.25 0.008 150);
+  --primary: oklch(0.68 0.15 42);
+  --primary-foreground: oklch(0.145 0.02 42);
+  --secondary: oklch(0.25 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.25 0.008 150);
-  --muted-foreground: oklch(0.708 0.01 150);
-  --accent: oklch(0.25 0.008 150);
+  --muted: oklch(0.25 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.25 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.74 0.14 150);
-  --chart-1: oklch(0.8 0.155 150);
-  --chart-2: oklch(0.78 0.1 80);
+  --ring: oklch(0.68 0.15 42);
+  --chart-1: oklch(0.68 0.15 42);
+  --chart-2: oklch(0.72 0.05 150);
   --chart-3: oklch(0.556 0 0);
   --chart-4: oklch(0.439 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.165 0.005 150);
+  --sidebar: oklch(0.12 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.8 0.155 150);
-  --sidebar-primary-foreground: oklch(0.19 0.05 150);
-  --sidebar-accent: oklch(0.25 0.008 150);
+  --sidebar-primary: oklch(0.68 0.15 42);
+  --sidebar-primary-foreground: oklch(0.145 0.02 42);
+  --sidebar-accent: oklch(0.25 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.74 0.14 150);
-  --glass-bg: oklch(0.205 0.006 150 / 55%);
+  --sidebar-ring: oklch(0.68 0.15 42);
+  --glass-bg: oklch(0.22 0 0 / 55%);
   --glass-border: oklch(1 0 0 / 8%);
   --glass-shadow: 0 1px 1px oklch(1 0 0 / 3%), 0 16px 40px -12px oklch(0 0 0 / 55%);
 }
@@ -175,6 +175,11 @@
     box-shadow: var(--glass-shadow);
     -webkit-backdrop-filter: blur(24px) saturate(1.4);
     backdrop-filter: blur(24px) saturate(1.4);
+  }
+  /* Small label above a heading or section — use sparingly, only where one
+     already belongs (e.g. a settings sub-header), never added as decoration. */
+  .text-eyebrow {
+    @apply text-xs font-semibold uppercase tracking-wider text-muted-foreground;
   }
 }
 @media (prefers-reduced-transparency: reduce) {

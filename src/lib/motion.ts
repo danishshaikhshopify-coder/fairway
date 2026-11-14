@@ -10,13 +10,21 @@ export const DURATION = {
   slow: 0.32,
 } as const;
 
+/** Snappy entrance spring: quick settle with a small single overshoot. */
+export const SPRING_SNAPPY: Transition = {
+  type: "spring",
+  stiffness: 420,
+  damping: 32,
+  mass: 0.9,
+};
+
 /** One short fade + rise, used for anything entering the page or a panel. */
 export const fadeUp: Variants = {
   hidden: { opacity: 0, y: 6 },
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: DURATION.base, ease: EASE_PREMIUM },
+    transition: SPRING_SNAPPY,
   },
 };
 
@@ -35,7 +43,7 @@ export const popIn: Variants = {
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: { duration: DURATION.fast, ease: EASE_PREMIUM },
+    transition: SPRING_SNAPPY,
   },
   exit: {
     opacity: 0,

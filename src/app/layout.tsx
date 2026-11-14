@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Onest, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const inter = Inter({
+const onest = Onest({
   variable: "--font-sans",
   subsets: ["latin"],
   display: "swap",
@@ -54,7 +54,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${onest.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       {/* suppressHydrationWarning applies to this element only, not children.
           Body attributes are a single static className, so nothing app-owned
