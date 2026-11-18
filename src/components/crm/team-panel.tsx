@@ -60,6 +60,14 @@ interface Invitation {
   created_at: string;
 }
 
+class ApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -67,7 +75,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const body = (await response.json().catch(() => ({}))) as T & { error?: string; message?: string };
   if (!response.ok) {
-    throw new Error(body?.message || body?.error || `Request failed (${response.status}).`);
+    throw new ApiError(body?.message || body?.error || `Request failed (${response.status}).`, body?.error);
   }
   return body;
 }
@@ -83,11 +91,16 @@ export function TeamPanel() {
   const [inviting, setInviting] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [reinviteRoles, setReinviteRoles] = useState<Record<string, InvitableRole>>({});
   const [reinvitingId, setReinvitingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // shortcut: a fixed 60s cooldown, not the provider's real reset time — good
+  // enough to stop hammering the shared 2/hour Supabase email quota.
+  const [resendCooldown, setResendCooldown] = useState<Record<string, boolean>>({});
 
   async function load() {
     setLoading(true);
@@ -153,9 +166,35 @@ export function TeamPanel() {
       await api("/api/team/invitations/resend", { method: "POST", body: JSON.stringify({ id }) });
       toast.success(`Resent the invite to ${email}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not resend the invite.");
+      if (error instanceof ApiError && error.code === "rate_limited") {
+        toast.error(
+          "Too many emails sent recently — Supabase limits this project to a few per hour. Try again shortly.",
+        );
+        setResendCooldown((prev) => ({ ...prev, [id]: true }));
+        setTimeout(() => setResendCooldown((prev) => ({ ...prev, [id]: false })), 60_000);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Could not resend the invite.");
+      }
     } finally {
       setResendingId(null);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api("/api/team/members/delete", {
+        method: "POST",
+        body: JSON.stringify({ id: deleteTarget.id, confirm: true }),
+      });
+      toast.success(`Permanently deleted ${deleteTarget.fullName || deleteTarget.email || "that member"}.`);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete that member.");
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   }
 
@@ -312,7 +351,7 @@ export function TeamPanel() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          disabled={resendingId === inv.id}
+                          disabled={resendingId === inv.id || resendCooldown[inv.id]}
                           onClick={() => resendInvite(inv.id, inv.email)}
                         >
                           <RotateCw className="size-4" aria-hidden="true" />
@@ -523,19 +562,30 @@ export function TeamPanel() {
                             </Select>
                           </TableCell>
                           <TableCell>
-                            {pending ? (
-                              <span className="text-sm text-muted-foreground">Invitation sent</span>
-                            ) : (
+                            <div className="flex items-center gap-1">
+                              {pending ? (
+                                <span className="text-sm text-muted-foreground">Invitation sent</span>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={reinvitingId === m.id}
+                                  onClick={() => reinvite(m)}
+                                >
+                                  <Mail className="size-4" aria-hidden="true" />
+                                  Re-invite
+                                </Button>
+                              )}
                               <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
-                                disabled={reinvitingId === m.id}
-                                onClick={() => reinvite(m)}
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => setDeleteTarget(m)}
                               >
-                                <Mail className="size-4" aria-hidden="true" />
-                                Re-invite
+                                <Trash2 className="size-4" aria-hidden="true" />
+                                Delete permanently
                               </Button>
-                            )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -563,6 +613,21 @@ export function TeamPanel() {
         }
         confirmLabel="Remove"
         onConfirm={confirmRemove}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+        title="Delete this member permanently?"
+        description={
+          deleteTarget
+            ? `This permanently deletes ${deleteTarget.fullName || deleteTarget.email || "this member"}'s account access and team membership — this cannot be undone. Their historical leads, tasks, activities and companies are kept, just no longer attributed to them as a user.`
+            : ""
+        }
+        confirmLabel="Delete permanently"
+        onConfirm={confirmDelete}
       />
     </div>
   );

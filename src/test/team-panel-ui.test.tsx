@@ -194,10 +194,15 @@ describe("Team panel — removed members / re-invite", () => {
     removedAt: "2026-11-10T00:00:00.000Z",
   };
 
-  function installRemovedFetch(reinviteImpl?: () => Response, pendingInvitations: unknown[] = []) {
+  function installRemovedFetch(
+    reinviteImpl?: () => Response,
+    pendingInvitations: unknown[] = [],
+    deleteImpl?: () => Response,
+  ) {
+    let removed: typeof REMOVED_MEMBER | null = { ...REMOVED_MEMBER };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/team/members" && !init?.method) {
-        return jsonResponse({ members: [OWNER, REMOVED_MEMBER] });
+        return jsonResponse({ members: removed ? [OWNER, removed] : [OWNER] });
       }
       if (url === "/api/team/invitations" && !init?.method) {
         return jsonResponse({ invitations: pendingInvitations });
@@ -205,6 +210,11 @@ describe("Team panel — removed members / re-invite", () => {
       if (url === "/api/team/invitations" && init?.method === "POST") {
         if (reinviteImpl) return reinviteImpl();
         return jsonResponse({ invitation: { id: "inv-1", email: "jane@fairway.test", role: "sales_rep" } });
+      }
+      if (url === "/api/team/members/delete" && init?.method === "POST") {
+        if (deleteImpl) return deleteImpl();
+        removed = null;
+        return jsonResponse({ deleted: true });
       }
       throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
     });
@@ -271,6 +281,59 @@ describe("Team panel — removed members / re-invite", () => {
     expect(screen.getByText("Admin")).toBeTruthy();
     // Removed date comes from removedAt, formatted.
     expect(screen.getByText(new Date("2026-11-10T00:00:00.000Z").toLocaleDateString())).toBeTruthy();
+  });
+
+  it("offers a permanent Delete action with a confirmation explaining what is deleted vs. kept, and does nothing on cancel", async () => {
+    const fetchMock = installRemovedFetch();
+    render(<TeamPanel />);
+    await screen.findByText("Removed members");
+
+    fireEvent.click(screen.getByRole("button", { name: /Delete permanently/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Jane Partner/)).toBeTruthy();
+    expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy();
+    expect(within(dialog).getByText(/leads, tasks, activities and companies are kept/)).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/team/members/delete", expect.anything());
+  });
+
+  it("deletes permanently on confirm, refreshes the roster, and reports success", async () => {
+    const fetchMock = installRemovedFetch();
+    render(<TeamPanel />);
+    await screen.findByText("Removed members");
+
+    fireEvent.click(screen.getByRole("button", { name: /Delete permanently/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete permanently" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/team/members/delete",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ id: "member-partner", confirm: true }),
+        }),
+      ),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText("Jane Partner")).toBeNull());
+  });
+
+  it("reports an error and keeps the member listed when permanent deletion fails", async () => {
+    installRemovedFetch(undefined, [], () =>
+      jsonResponse({ error: "forbidden", message: "Only the owner can delete team members." }, 403),
+    );
+    render(<TeamPanel />);
+    await screen.findByText("Removed members");
+
+    fireEvent.click(screen.getByRole("button", { name: /Delete permanently/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete permanently" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(screen.getByText("Jane Partner")).toBeTruthy();
   });
 });
 
@@ -410,5 +473,23 @@ describe("Team panel — pending invitations", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByText("new@fairway.test")).toBeTruthy();
+  });
+
+  it("shows a specific message and disables Resend for a cooldown when the provider's email rate limit is hit", async () => {
+    installPendingFetch({
+      resendImpl: () =>
+        jsonResponse({ error: "rate_limited", message: "Email rate limit exceeded." }, 429),
+    });
+    render(<TeamPanel />);
+    await screen.findByText("new@fairway.test");
+
+    fireEvent.click(screen.getByRole("button", { name: /Resend/ }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Too many emails sent recently/)),
+    );
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: /Resend/ }) as HTMLButtonElement).disabled).toBe(true),
+    );
   });
 });

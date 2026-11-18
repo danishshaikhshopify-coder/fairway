@@ -171,7 +171,7 @@ describe("POST /api/team/invitations/complete — finishing a reactivation", () 
         })),
       },
     });
-    const from = vi.fn().mockReturnValueOnce(chain({ data: null, error: null }));
+    const from = vi.fn().mockReturnValueOnce(chain({ data: [], error: null }));
     getServiceSupabase.mockReturnValue({ from });
 
     const response = await completeInvite();
@@ -190,7 +190,7 @@ describe("POST /api/team/invitations/complete — finishing a reactivation", () 
       },
     });
     const invitationLookup = chain({
-      data: { id: "inv-1", workspace_id: "ws-1", role: "admin" },
+      data: [{ id: "inv-1", workspace_id: "ws-1", role: "admin" }],
       error: null,
     });
     const memberLookup = chain({ data: { id: "member-1", is_active: false }, error: null });
@@ -219,6 +219,48 @@ describe("POST /api/team/invitations/complete — finishing a reactivation", () 
     );
   });
 
+  it("picks the pending invitation matching the deactivated workspace, not just the most recent one", async () => {
+    // Same email holds a live pending invite in two workspaces at once —
+    // the per-workspace uniqueness constraint allows this. The most recent
+    // one (ws-2) is for a workspace where this user has no membership yet;
+    // the older one (ws-1) is the actual reactivation this call must find.
+    getServerSupabase.mockResolvedValue({
+      auth: {
+        getUser: vi.fn(async () => ({
+          data: { user: { id: "removed-uid", email: "jane@fairway.test" } },
+          error: null,
+        })),
+      },
+    });
+    const invitationLookup = chain({
+      data: [
+        { id: "inv-newer", workspace_id: "ws-2", role: "viewer" },
+        { id: "inv-older", workspace_id: "ws-1", role: "admin" },
+      ],
+      error: null,
+    });
+    const memberLookupWs2 = chain({ data: null, error: null });
+    const memberLookupWs1 = chain({ data: { id: "member-1", is_active: false }, error: null });
+    const reactivateUpdate = chain({ data: null, error: null });
+    const invitationUpdate = chain({ data: null, error: null });
+    const from = vi
+      .fn()
+      .mockReturnValueOnce(invitationLookup)
+      .mockReturnValueOnce(memberLookupWs2)
+      .mockReturnValueOnce(memberLookupWs1)
+      .mockReturnValueOnce(reactivateUpdate)
+      .mockReturnValueOnce(invitationUpdate);
+    getServiceSupabase.mockReturnValue({ from });
+
+    const response = await completeInvite();
+    const body = await response.json();
+    expect(body).toEqual({ reactivated: true });
+    expect(reactivateUpdate.update).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "admin" }),
+    );
+    expect(invitationUpdate.eq).toHaveBeenCalledWith("id", "inv-older");
+  });
+
   it("does not reactivate someone who is already an active member", async () => {
     getServerSupabase.mockResolvedValue({
       auth: {
@@ -229,7 +271,7 @@ describe("POST /api/team/invitations/complete — finishing a reactivation", () 
       },
     });
     const invitationLookup = chain({
-      data: { id: "inv-2", workspace_id: "ws-1", role: "admin" },
+      data: [{ id: "inv-2", workspace_id: "ws-1", role: "admin" }],
       error: null,
     });
     const memberLookup = chain({ data: { id: "member-2", is_active: true }, error: null });

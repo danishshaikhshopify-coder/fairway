@@ -18,6 +18,19 @@ export function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Supabase Auth's project-wide email quota (Free plan default: 2/hour,
+ * shared across invite/reset/signup/magic-link) rejects with this GoTrue
+ * error code — distinct from any other send failure so callers can show a
+ * clear, specific message instead of a generic "something went wrong".
+ */
+export function isEmailRateLimited(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "over_email_send_rate_limit";
+}
+
+export const EMAIL_RATE_LIMITED_MESSAGE =
+  "This project's email sending limit was reached. Wait a few minutes and try again, or configure a custom SMTP provider in Supabase to raise the limit.";
+
 export function validateInviteInput(body: unknown): ValidationResult<InviteInput> {
   if (!body || typeof body !== "object") {
     return { ok: false, error: "Request body must be a JSON object." };

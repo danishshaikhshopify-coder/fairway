@@ -154,4 +154,53 @@ describe("POST /api/team/invitations/resend", () => {
     const body = await response.json();
     expect(body.error).toBe("resend_failed");
   });
+
+  it("surfaces a distinct rate_limited response (not a generic failure) when Supabase's email quota is hit", async () => {
+    getServerSupabase.mockResolvedValue(serverClient("owner"));
+    const invitationLookup = chain({
+      data: { id: "inv-1", email: "jane@fairway.test", status: "pending" },
+      error: null,
+    });
+    const listUsers = vi.fn(async () => ({
+      data: { users: [{ id: "jane-uid", email: "jane@fairway.test" }] },
+      error: null,
+    }));
+    const resetPasswordForEmail = vi.fn(async () => ({
+      data: null,
+      error: { message: "Email rate limit exceeded", code: "over_email_send_rate_limit" },
+    }));
+    const from = vi.fn().mockReturnValueOnce(invitationLookup);
+    getServiceSupabase.mockReturnValue({
+      from,
+      auth: { admin: { listUsers, inviteUserByEmail: vi.fn() }, resetPasswordForEmail },
+    });
+
+    const response = await resendInvite(request("inv-1"));
+    expect(response.status).toBe(429);
+    const body = await response.json();
+    expect(body.error).toBe("rate_limited");
+  });
+
+  it("surfaces rate_limited via the inviteUserByEmail fallback path too", async () => {
+    getServerSupabase.mockResolvedValue(serverClient("owner"));
+    const invitationLookup = chain({
+      data: { id: "inv-2", email: "new@fairway.test", status: "pending" },
+      error: null,
+    });
+    const listUsers = vi.fn(async () => ({ data: { users: [] }, error: null }));
+    const inviteUserByEmail = vi.fn(async () => ({
+      data: null,
+      error: { message: "Email rate limit exceeded", code: "over_email_send_rate_limit" },
+    }));
+    const from = vi.fn().mockReturnValueOnce(invitationLookup);
+    getServiceSupabase.mockReturnValue({
+      from,
+      auth: { admin: { listUsers, inviteUserByEmail } },
+    });
+
+    const response = await resendInvite(request("inv-2"));
+    expect(response.status).toBe(429);
+    const body = await response.json();
+    expect(body.error).toBe("rate_limited");
+  });
 });

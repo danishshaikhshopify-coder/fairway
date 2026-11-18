@@ -36,36 +36,44 @@ export async function POST(): Promise<Response> {
   const service = getServiceSupabase();
   if (!service) return serverError("Service role is not configured.");
 
-  const { data: invitation, error: invitationError } = await service
+  // The pending-invite uniqueness constraint is per-workspace, not global,
+  // so the same email can hold a live pending invite in more than one
+  // workspace at once. Picking only the single most-recent one (the old
+  // `.limit(1)`) could pick the wrong workspace and silently fail to
+  // reactivate the right membership. Check every pending invite for this
+  // email and reactivate whichever one actually matches a deactivated row.
+  const { data: invitations, error: invitationError } = await service
     .from("invitations")
     .select("id, workspace_id, role")
     .eq("email", normaliseEmail(userData.user.email))
     .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
   if (invitationError) return serverError(invitationError.message);
-  if (!invitation) return Response.json({ reactivated: false });
+  if (!invitations || invitations.length === 0) return Response.json({ reactivated: false });
 
-  const { data: member, error: memberError } = await service
-    .from("workspace_members")
-    .select("id, is_active")
-    .eq("workspace_id", invitation.workspace_id)
-    .eq("user_id", userData.user.id)
-    .maybeSingle();
-  if (memberError) return serverError(memberError.message);
-  if (!member || member.is_active) return Response.json({ reactivated: false });
+  for (const invitation of invitations) {
+    const { data: member, error: memberError } = await service
+      .from("workspace_members")
+      .select("id, is_active")
+      .eq("workspace_id", invitation.workspace_id)
+      .eq("user_id", userData.user.id)
+      .maybeSingle();
+    if (memberError) return serverError(memberError.message);
+    if (!member || member.is_active) continue;
 
-  const { error: reactivateError } = await service
-    .from("workspace_members")
-    .update({ is_active: true, role: invitation.role, removed_at: null })
-    .eq("id", member.id);
-  if (reactivateError) return serverError(reactivateError.message);
+    const { error: reactivateError } = await service
+      .from("workspace_members")
+      .update({ is_active: true, role: invitation.role, removed_at: null })
+      .eq("id", member.id);
+    if (reactivateError) return serverError(reactivateError.message);
 
-  await service
-    .from("invitations")
-    .update({ status: "accepted", accepted_at: new Date().toISOString() })
-    .eq("id", invitation.id);
+    await service
+      .from("invitations")
+      .update({ status: "accepted", accepted_at: new Date().toISOString() })
+      .eq("id", invitation.id);
 
-  return Response.json({ reactivated: true });
+    return Response.json({ reactivated: true });
+  }
+
+  return Response.json({ reactivated: false });
 }

@@ -28,7 +28,7 @@ import { randomUUID } from "node:crypto";
 import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
 import { AppUrlConfigError, getAppUrl } from "@/lib/app-url";
 import { getServiceSupabase } from "@/lib/supabase/server";
-import { validateInviteInput } from "@/lib/team/invites";
+import { EMAIL_RATE_LIMITED_MESSAGE, isEmailRateLimited, validateInviteInput } from "@/lib/team/invites";
 
 export async function GET(): Promise<Response> {
   const result = await requireActor();
@@ -146,6 +146,9 @@ export async function POST(request: Request): Promise<Response> {
     });
     if (resetEmailError) {
       await db.from("invitations").delete().eq("id", invitation.id);
+      if (isEmailRateLimited(resetEmailError)) {
+        return Response.json({ error: "rate_limited", message: EMAIL_RATE_LIMITED_MESSAGE }, { status: 429 });
+      }
       return Response.json(
         { error: "invite_failed", message: resetEmailError.message },
         { status: 502 },
@@ -161,6 +164,9 @@ export async function POST(request: Request): Promise<Response> {
     // Roll the invitation back so a retry does not collide with the unique
     // pending-invite index.
     await db.from("invitations").delete().eq("id", invitation.id);
+    if (isEmailRateLimited(inviteError)) {
+      return Response.json({ error: "rate_limited", message: EMAIL_RATE_LIMITED_MESSAGE }, { status: 429 });
+    }
     return Response.json(
       { error: "invite_failed", message: inviteError.message },
       { status: 502 },

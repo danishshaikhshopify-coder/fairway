@@ -10,6 +10,14 @@
 import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
 import { AppUrlConfigError, getAppUrl } from "@/lib/app-url";
 import { getServiceSupabase } from "@/lib/supabase/server";
+import { EMAIL_RATE_LIMITED_MESSAGE, isEmailRateLimited } from "@/lib/team/invites";
+
+function resendFailure(error: { code?: string; message: string }): Response {
+  if (isEmailRateLimited(error)) {
+    return Response.json({ error: "rate_limited", message: EMAIL_RATE_LIMITED_MESSAGE }, { status: 429 });
+  }
+  return Response.json({ error: "resend_failed", message: error.message }, { status: 502 });
+}
 
 export async function POST(request: Request): Promise<Response> {
   const result = await requireActor();
@@ -63,7 +71,7 @@ export async function POST(request: Request): Promise<Response> {
       redirectTo: `${origin}/invite/accept`,
     });
     if (resendError) {
-      return Response.json({ error: "resend_failed", message: resendError.message }, { status: 502 });
+      return resendFailure(resendError);
     }
     return Response.json({ resent: true });
   }
@@ -72,7 +80,7 @@ export async function POST(request: Request): Promise<Response> {
     redirectTo: `${origin}/invite/accept`,
   });
   if (inviteError) {
-    return Response.json({ error: "resend_failed", message: inviteError.message }, { status: 502 });
+    return resendFailure(inviteError);
   }
   return Response.json({ resent: true });
 }
