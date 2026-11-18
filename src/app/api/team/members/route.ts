@@ -11,6 +11,7 @@
 import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import { validateMemberPatch } from "@/lib/team/invites";
+import { logTeamEvent } from "@/lib/team/audit";
 
 interface MemberRow {
   id: string;
@@ -86,7 +87,7 @@ export async function GET(): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const result = await requireActor();
   if (result.response) return result.response;
-  const { role, workspaceId } = result.actor;
+  const { role, workspaceId, memberId: actorMemberId } = result.actor;
   if (!canManageTeam(role)) return forbidden("Only the owner can manage team members.");
 
   const body = await request.json().catch(() => null);
@@ -131,6 +132,27 @@ export async function POST(request: Request): Promise<Response> {
     }
     const { error } = await db.from("workspace_members").update(memberPatch).eq("id", id);
     if (error) return serverError(error.message);
+
+    if (patch.role !== undefined) {
+      await logTeamEvent(db, {
+        workspaceId,
+        actorMemberId,
+        targetUserId: member.user_id,
+        action: "role_changed",
+        previousValue: { role: member.role },
+        newValue: { role: patch.role },
+        result: "success",
+      });
+    }
+    if (patch.isActive === false) {
+      await logTeamEvent(db, {
+        workspaceId,
+        actorMemberId,
+        targetUserId: member.user_id,
+        action: "member_deactivated",
+        result: "success",
+      });
+    }
   }
 
   if (patch.receivesReminders !== undefined) {

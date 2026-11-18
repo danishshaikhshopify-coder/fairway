@@ -19,6 +19,7 @@
 
 import { badRequest, canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
 import { getServiceSupabase } from "@/lib/supabase/server";
+import { logTeamEvent } from "@/lib/team/audit";
 
 export async function POST(request: Request): Promise<Response> {
   const result = await requireActor();
@@ -87,5 +88,13 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  await logTeamEvent(db, {
+    workspaceId,
+    actorMemberId: actingMemberId,
+    targetUserId: member.user_id,
+    action: "member_permanently_deleted",
+    newValue: { authDeleted, otherWorkspaceMemberships: hasOtherMemberships },
+    result: "success",
+  });
   return Response.json({ deleted: true, authDeleted, otherWorkspaceMemberships: hasOtherMemberships });
 }

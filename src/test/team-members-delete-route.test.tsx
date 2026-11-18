@@ -10,6 +10,7 @@ const getServerSupabase = vi.hoisted(() => vi.fn());
 const getServiceSupabase = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase/server", () => ({ getServerSupabase, getServiceSupabase }));
+vi.mock("@/lib/team/audit", () => ({ logTeamEvent: vi.fn(async () => undefined) }));
 
 import { POST as deleteMember } from "@/app/api/team/members/delete/route";
 

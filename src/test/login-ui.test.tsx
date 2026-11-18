@@ -38,6 +38,9 @@ function fillCredentials(email: string, password: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   window.history.replaceState({}, "", "/login");
+  // Login now fires a best-effort audit POST on every outcome; stub a
+  // no-op default so tests that don't care about it don't hit real fetch.
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({}) })));
 });
 
 describe("Login page", () => {
@@ -94,6 +97,60 @@ describe("Login page", () => {
       ),
     );
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows the owner-approval message for a banned account whose invite is awaiting approval", async () => {
+    auth.signInWithPassword.mockResolvedValue({
+      error: { code: "user_banned", message: "User is banned" },
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/team/invitations/status") {
+        return { ok: true, json: async () => ({ awaitingApproval: true }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LoginPage />);
+    fillCredentials("pending@example.com", "secret1");
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Your account is awaiting workspace owner approval.",
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/team/invitations/status",
+      expect.objectContaining({ body: JSON.stringify({ email: "pending@example.com" }) }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/team/login-event",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "pending@example.com", outcome: "login_blocked_pending_approval" }),
+      }),
+    );
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows a generic banned-account message when the invite is not awaiting approval", async () => {
+    auth.signInWithPassword.mockResolvedValue({
+      error: { code: "user_banned", message: "User is banned" },
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/team/invitations/status") {
+        return { ok: true, json: async () => ({ awaitingApproval: false }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LoginPage />);
+    fillCredentials("removed@example.com", "secret1");
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Your account cannot sign in right now. Contact your workspace owner.",
+      ),
+    );
+    expect(screen.getByRole("alert").textContent).not.toContain("awaiting workspace owner approval");
   });
 
   // Fairway CRM is invite-only (Phase 2): the page never offers a self-serve

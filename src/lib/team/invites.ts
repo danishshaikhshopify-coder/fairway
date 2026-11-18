@@ -31,6 +31,9 @@ export function isEmailRateLimited(error: { code?: string } | null | undefined):
 export const EMAIL_RATE_LIMITED_MESSAGE =
   "This project's email sending limit was reached. Wait a few minutes and try again, or configure a custom SMTP provider in Supabase to raise the limit.";
 
+/** supabase-js's own documented "ban forever" value. */
+export const PERMANENT_BAN = "876000h";
+
 export function validateInviteInput(body: unknown): ValidationResult<InviteInput> {
   if (!body || typeof body !== "object") {
     return { ok: false, error: "Request body must be a JSON object." };

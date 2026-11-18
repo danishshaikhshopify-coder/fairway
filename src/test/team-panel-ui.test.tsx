@@ -395,6 +395,124 @@ describe("Team panel — loading and error states", () => {
   });
 });
 
+describe("Team panel — approval requests", () => {
+  const AWAITING_MEMBER = {
+    ...BASE_PARTNER,
+    id: "member-awaiting",
+    email: "newbie@fairway.test",
+    isActive: false,
+    removed: false,
+    removedAt: null,
+  };
+  const AWAITING_INVITATION = {
+    id: "inv-awaiting",
+    email: "newbie@fairway.test",
+    role: "sales_rep",
+    status: "awaiting_approval",
+    created_at: "2026-11-01T00:00:00.000Z",
+    accepted_at: "2026-11-02T00:00:00.000Z",
+    fullName: "Newbie Partner",
+  };
+
+  function installApprovalFetch(opts: {
+    approveImpl?: () => Response;
+    rejectImpl?: () => Response;
+    auditEntries?: unknown[];
+  } = {}) {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/team/members" && !init?.method) {
+        return jsonResponse({ members: [OWNER, AWAITING_MEMBER] });
+      }
+      if (url === "/api/team/invitations" && !init?.method) {
+        return jsonResponse({ invitations: [AWAITING_INVITATION] });
+      }
+      if (url === "/api/team/audit-log" && !init?.method) {
+        return jsonResponse({ entries: opts.auditEntries ?? [] });
+      }
+      if (url === "/api/team/invitations/approve" && init?.method === "POST") {
+        return opts.approveImpl ? opts.approveImpl() : jsonResponse({ approved: true });
+      }
+      if (url === "/api/team/invitations/reject" && init?.method === "POST") {
+        return opts.rejectImpl ? opts.rejectImpl() : jsonResponse({ rejected: true });
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("lists a request awaiting approval, and excludes it from Active and Removed members", async () => {
+    installApprovalFetch();
+    render(<TeamPanel />);
+    await screen.findByText("Approval requests");
+    expect(screen.getByText("newbie@fairway.test")).toBeTruthy();
+    // Renders exactly once — in Approval requests — never duplicated into
+    // the Active or Removed members tables, which have their own rows keyed
+    // off the same members array.
+    expect(screen.getAllByText("Newbie Partner")).toHaveLength(1);
+    expect(screen.getByText("No removed members")).toBeTruthy();
+  });
+
+  it("approves a request on confirm and refreshes", async () => {
+    const fetchMock = installApprovalFetch();
+    render(<TeamPanel />);
+    await screen.findByText("Approval requests");
+
+    fireEvent.click(screen.getByRole("button", { name: /Approve/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Newbie Partner/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/team/invitations/approve",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ id: "inv-awaiting" }) }),
+      ),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  });
+
+  it("rejects a request on confirm, and reports an error without crashing on failure", async () => {
+    const fetchMock = installApprovalFetch({
+      rejectImpl: () => jsonResponse({ error: "forbidden", message: "Only the owner can reject." }, 403),
+    });
+    render(<TeamPanel />);
+    await screen.findByText("Approval requests");
+
+    fireEvent.click(screen.getByRole("button", { name: /Reject/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Reject" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/team/invitations/reject",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ id: "inv-awaiting" }) }),
+      ),
+    );
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  });
+
+  it("renders the activity log with humanized actions and a result badge", async () => {
+    installApprovalFetch({
+      auditEntries: [
+        {
+          id: "audit-1",
+          actorMemberId: "member-owner",
+          targetEmail: "newbie@fairway.test",
+          targetUserId: null,
+          action: "member_approved",
+          result: "success",
+          createdAt: "2026-11-03T00:00:00.000Z",
+        },
+      ],
+    });
+    render(<TeamPanel />);
+    await screen.findByText("Activity log");
+    expect(screen.getByText("Member approved")).toBeTruthy();
+    expect(screen.getByText("Success")).toBeTruthy();
+  });
+});
+
 describe("Team panel — pending invitations", () => {
   function installPendingFetch(opts: {
     invitations?: unknown[];

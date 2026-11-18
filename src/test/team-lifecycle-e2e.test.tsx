@@ -1,21 +1,20 @@
-// A genuine end-to-end test of the Team Management lifecycle: it chains the
-// REAL route handlers (invite, resend, revoke, remove, complete, delete,
-// members GET) against ONE stateful in-memory fake that persists row state
-// across calls — unlike the per-route unit tests elsewhere in this suite,
-// which hand each route a fresh, static, single-call mock. That's the only
-// way to actually exercise a multi-step lifecycle (invite -> remove ->
-// re-invite -> accept -> ...) rather than assert on each step in isolation.
+// A genuine end-to-end test of the Team Management lifecycle, now including
+// the owner-approval gate: it chains the REAL route handlers (invite,
+// resend, revoke, complete, approve, reject, remove, delete, members GET,
+// invitations GET, the unauthenticated status lookup) against ONE stateful
+// in-memory fake that persists row state across calls — unlike the
+// per-route unit tests elsewhere in this suite, which hand each route a
+// fresh, static, single-call mock.
 //
-// The fake models the real schema behavior that matters here, confirmed
-// against the B7 migration SQL (supabase/migrations/20261109010000_b7_*):
-// admin.inviteUserByEmail() synchronously fires handle_new_user(), which
-// creates the workspace_members row AND flips the invitation to 'accepted'
-// in the same transaction — a brand-new invite is therefore never
-// observably "pending" to the owner. resetPasswordForEmail() (the
-// reactivation path, used for a REMOVED member) does neither, which is why
-// "Pending Invitations" is only ever populated by a reactivation re-invite
-// in the current architecture. This file documents that as a finding
-// rather than papering over it.
+// The fake models the NEW schema behavior (B10 migration): admin.
+// inviteUserByEmail() still fires handle_new_user() synchronously, but that
+// trigger now creates the workspace_members row INACTIVE and never touches
+// the invitation's status — a brand-new invite is therefore genuinely
+// "pending" until the invitee actually completes password setup (POST
+// .../complete), at which point the invitation becomes "awaiting_approval"
+// and the auth account is banned. Nothing becomes active until the owner
+// explicitly approves (POST .../approve) — confirmed with the user to apply
+// identically to a brand-new invite and to reactivating a removed member.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getServerSupabase = vi.hoisted(() => vi.fn());
@@ -30,7 +29,10 @@ import { POST as createInvitation, GET as listInvitations } from "@/app/api/team
 import { POST as resendInvitation } from "@/app/api/team/invitations/resend/route";
 import { POST as revokeInvitation } from "@/app/api/team/invitations/revoke/route";
 import { POST as completeInvitation } from "@/app/api/team/invitations/complete/route";
-import { GET as listMembers } from "@/app/api/team/members/route";
+import { POST as approveInvitation } from "@/app/api/team/invitations/approve/route";
+import { POST as rejectInvitation } from "@/app/api/team/invitations/reject/route";
+import { POST as invitationStatus } from "@/app/api/team/invitations/status/route";
+import { GET as listMembers, POST as patchMember } from "@/app/api/team/members/route";
 import { POST as removeMember } from "@/app/api/team/members/remove/route";
 import { POST as deleteMember } from "@/app/api/team/members/delete/route";
 
@@ -53,6 +55,10 @@ interface State {
 
 function nextTimestamp(state: State): string {
   return new Date(2026, 0, 1, 0, 0, 0, state.clock++).toISOString();
+}
+
+function isBanned(u: AuthUser): boolean {
+  return Boolean(u.banned_until) && new Date(u.banned_until!) > new Date();
 }
 
 function makeQueryBuilder(table: string, state: State) {
@@ -99,6 +105,7 @@ function makeQueryBuilder(table: string, state: State) {
         status: "pending",
         accepted_at: null,
         revoked_at: null,
+        rejected_at: null,
         removed_at: null,
         is_active: true,
         profiles: null,
@@ -132,6 +139,10 @@ function makeQueryBuilder(table: string, state: State) {
     },
     neq(col: string, val: unknown) {
       filters.push((r) => r[col] !== val);
+      return builder;
+    },
+    in(col: string, vals: unknown[]) {
+      filters.push((r) => vals.includes(r[col]));
       return builder;
     },
     order(col: string, opts?: { ascending?: boolean }) {
@@ -201,9 +212,10 @@ function makeDb(state: State) {
           const id = `auth-${state.authUsers.length + 1}`;
           const user: AuthUser = { id, email, banned_until: null };
           state.authUsers.push(user);
-          // Simulate handle_new_user(): admits into whichever pending invite
-          // matches this email (global, not workspace-scoped — see B7 SQL),
-          // creating workspace_members and flipping the invite in one step.
+          // Simulate the NEW handle_new_user() (B10): admits into whichever
+          // pending invite matches this email, creating workspace_members
+          // INACTIVE and leaving the invitation's status untouched (still
+          // 'pending') — nothing becomes active until an explicit approval.
           const invite = state.tables.invitations
             .filter((r) => String(r.email).toLowerCase() === email.toLowerCase() && r.status === "pending")
             .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
@@ -213,13 +225,11 @@ function makeDb(state: State) {
               user_id: id,
               workspace_id: invite.workspace_id,
               role: invite.role,
-              is_active: true,
+              is_active: false,
               removed_at: null,
               profiles: null,
               created_at: nextTimestamp(state),
             });
-            invite.status = "accepted";
-            invite.accepted_at = nextTimestamp(state);
           }
           return { data: { user }, error: null };
         },
@@ -240,13 +250,13 @@ function makeDb(state: State) {
   };
 }
 
-describe("Team Management — 15-step lifecycle (real route handlers, stateful fake)", () => {
+describe("Team Management — owner-approval lifecycle (real route handlers, stateful fake)", () => {
   let state: State;
   let db: ReturnType<typeof makeDb>;
 
   beforeEach(() => {
     state = {
-      tables: { workspace_members: [], invitations: [], gmail_connections: [], profiles: [] },
+      tables: { workspace_members: [], invitations: [], gmail_connections: [], profiles: [], team_audit_log: [] },
       authUsers: [],
       currentUserId: null,
       rateLimited: false,
@@ -286,149 +296,195 @@ describe("Team Management — 15-step lifecycle (real route handlers, stateful f
   };
   const req = (body: unknown) => new Request("https://fairway-crm-one.vercel.app/api", { method: "POST", body: JSON.stringify(body) });
 
-  it("runs invite -> pending -> resend -> cancel -> remove -> reactivate -> cross-workspace -> delete -> rate-limit", async () => {
-    // --- Step 1: invite a new member --------------------------------------
+  it("gates every path to active membership behind an explicit owner approval", async () => {
+    // ===== Bob: invite -> pending -> accept -> awaiting approval -> blocked -> approved =====
     asUser("u-owner-1");
     const inviteRes = await createInvitation(req({ email: "bob@fairway.test", role: "sales_rep" }));
     expect(inviteRes.status).toBe(200);
 
-    // --- Step 2: "verify pending invitation appears" ----------------------
-    // FINDING: it does not, for a brand-new invite. admin.inviteUserByEmail()
-    // fires handle_new_user() synchronously, which both admits bob into
-    // workspace_members (is_active=true) AND flips the invitation row to
-    // 'accepted' in the same transaction — before this response is even
-    // sent. There is no observable "pending" window for a first-time invite
-    // in the current schema; "pending" only exists for a reactivation
-    // re-invite (see Step 9-10 below). Assert what actually happens instead.
+    // A brand-new invite IS genuinely pending now (B10 fixes the old
+    // instant-admit trigger) — the owner sees it in both lists correctly.
     let invitations = (await (await listInvitations()).json()).invitations as Row[];
-    const bobInvite = invitations.find((i) => i.email === "bob@fairway.test");
-    expect(bobInvite?.status).toBe("accepted");
+    let bobInvite = invitations.find((i) => i.email === "bob@fairway.test")!;
+    expect(bobInvite.status).toBe("pending");
     let members = (await (await listMembers()).json()).members as Row[];
-    let bob = members.find((m) => m.email === "bob@fairway.test");
-    expect(bob?.isActive).toBe(true);
-    expect(bob?.role).toBe("sales_rep");
-    expect(bob?.removed).toBe(false);
-    const bobMemberId = bob!.id as string;
+    let bob = members.find((m) => m.email === "bob@fairway.test")!;
+    expect(bob.isActive).toBe(false);
+    expect(bob.removed).toBe(false);
+    const bobMemberId = bob.id as string;
     const bobUserId = state.authUsers.find((u) => u.email === "bob@fairway.test")!.id;
 
-    // --- Step 6: remove the active member ---------------------------------
-    const removeRes = await removeMember(req({ id: bobMemberId }));
-    expect(removeRes.status).toBe(200);
-    expect((await removeRes.json()).removed).toBe(true);
-
-    // --- Step 7: verify access revoked --------------------------------------
-    asUser(bobUserId);
-    const bobActorAfterRemove = await listMembers(); // requireActor() runs inside; bob has no API route of his own to call pre-reactivation, so exercise requireActor() via a route he'd hit: members GET requires an actor too.
-    expect(bobActorAfterRemove.status).toBe(403);
-    expect((await bobActorAfterRemove.json()).error).toBe("no_workspace");
-
-    // --- Step 8: verify appears in Removed Members --------------------------
-    asUser("u-owner-1");
-    members = (await (await listMembers()).json()).members as Row[];
-    bob = members.find((m) => m.email === "bob@fairway.test");
-    expect(bob?.isActive).toBe(false);
-    expect(bob?.removed).toBe(true);
-    expect(bob?.banned).toBe(true);
-
-    // --- Step 9: re-invite with a different role (reactivation path) -------
-    const reinviteRes = await createInvitation(req({ email: "bob@fairway.test", role: "admin" }));
-    expect(reinviteRes.status).toBe(200);
-
-    // --- Step 10: verify it is a genuinely pending invitation ----------------
-    invitations = (await (await listInvitations()).json()).invitations as Row[];
-    const reactivationInvite = invitations.find((i) => i.email === "bob@fairway.test" && i.status === "pending");
-    expect(reactivationInvite).toBeTruthy();
-    members = (await (await listMembers()).json()).members as Row[];
-    bob = members.find((m) => m.email === "bob@fairway.test");
-    expect(bob?.isActive).toBe(false); // role takes effect only once Step 11 runs — see complete/route.ts.
-
-    // --- Step 3: resend this (genuinely pending) invitation ------------------
-    const resendRes = await resendInvitation(req({ id: reactivationInvite!.id }));
-    expect(resendRes.status).toBe(200);
-    expect((await resendRes.json()).resent).toBe(true);
-
-    // --- Step 11: complete password reset + acceptance ------------------------
+    // Bob opens the accept link and sets a password.
     asUser(bobUserId);
     const completeRes = await completeInvitation();
     expect(completeRes.status).toBe(200);
-    expect((await completeRes.json()).reactivated).toBe(true);
+    expect((await completeRes.json()).status).toBe("awaiting_approval");
 
-    // --- Step 12: verify active with the new, correct role ---------------------
     asUser("u-owner-1");
-    members = (await (await listMembers()).json()).members as Row[];
-    bob = members.find((m) => m.email === "bob@fairway.test");
-    expect(bob?.isActive).toBe(true);
-    expect(bob?.role).toBe("admin");
-    expect(bob?.removed).toBe(false);
     invitations = (await (await listInvitations()).json()).invitations as Row[];
-    expect(invitations.find((i) => i.id === reactivationInvite!.id)?.status).toBe("accepted");
+    bobInvite = invitations.find((i) => i.email === "bob@fairway.test")!;
+    expect(bobInvite.status).toBe("awaiting_approval");
+    expect(bobInvite.accepted_at).toBeTruthy();
+    const bobAuth = () => state.authUsers.find((u) => u.id === bobUserId)!;
+    expect(isBanned(bobAuth())).toBe(true); // login-blocking enforcement: the auth provider itself refuses him, not just RLS.
 
-    // --- Step 13: cross-workspace isolation -------------------------------------
-    // owner2 (ws-2) must not see bob at all, and cannot act on his membership
-    // row even by id — it belongs to ws-1, requireActor() scopes owner2 to ws-2.
+    // Direct API access blocked while awaiting approval.
+    asUser(bobUserId);
+    const blockedApi = await listMembers();
+    expect(blockedApi.status).toBe(403);
+    expect((await blockedApi.json()).error).toBe("no_workspace");
+
+    // The login page's status lookup (unauthenticated) confirms the reason.
+    const statusWhilePending = await invitationStatus(req({ email: "bob@fairway.test" }));
+    expect((await statusWhilePending.json())).toEqual({ awaitingApproval: true });
+
+    // Cross-workspace: owner2 cannot see bob, and cannot approve/reject his invitation.
     asUser("u-owner-2");
     const ws2Members = (await (await listMembers()).json()).members as Row[];
     expect(ws2Members.some((m) => m.email === "bob@fairway.test")).toBe(false);
-    const crossTenantRemove = await removeMember(req({ id: bobMemberId }));
-    expect(crossTenantRemove.status).toBe(404);
-    expect((await crossTenantRemove.json()).error).toBe("not_found");
+    const crossTenantApprove = await approveInvitation(req({ id: bobInvite.id }));
+    expect(crossTenantApprove.status).toBe(404);
+    expect((await crossTenantApprove.json()).error).toBe("not_found");
 
-    // --- Step 4 + 5: cancel a pending invitation; verify it disappears and the
-    // old link (completeInvitation) can no longer reactivate from it ------------
+    // Owner1 approves — the ONLY thing that activates access.
     asUser("u-owner-1");
-    await removeMember(req({ id: bobMemberId })); // remove bob again to generate a second, genuinely-pending reactivation invite
-    const secondReinvite = await createInvitation(req({ email: "bob@fairway.test", role: "sales_rep" }));
-    expect(secondReinvite.status).toBe(200);
-    invitations = (await (await listInvitations()).json()).invitations as Row[];
-    const pendingAgain = invitations.find((i) => i.email === "bob@fairway.test" && i.status === "pending");
-    expect(pendingAgain).toBeTruthy();
+    const approveRes = await approveInvitation(req({ id: bobInvite.id }));
+    expect(approveRes.status).toBe(200);
+    expect((await approveRes.json()).approved).toBe(true);
 
-    const cancelRes = await revokeInvitation(req({ id: pendingAgain!.id }));
-    expect(cancelRes.status).toBe(200);
-    expect((await cancelRes.json()).revoked).toBe(true);
-
+    members = (await (await listMembers()).json()).members as Row[];
+    bob = members.find((m) => m.email === "bob@fairway.test")!;
+    expect(bob.isActive).toBe(true);
+    expect(bob.role).toBe("sales_rep");
+    expect(isBanned(bobAuth())).toBe(false); // ban lifted on approval.
     invitations = (await (await listInvitations()).json()).invitations as Row[];
-    expect(invitations.find((i) => i.id === pendingAgain!.id)?.status).toBe("revoked");
-    expect(invitations.some((i) => i.email === "bob@fairway.test" && i.status === "pending")).toBe(false);
+    expect(invitations.find((i) => i.id === bobInvite.id)?.status).toBe("accepted");
+
+    const statusAfterApproval = await invitationStatus(req({ email: "bob@fairway.test" }));
+    expect((await statusAfterApproval.json())).toEqual({ awaitingApproval: false });
+
+    // Bob can now actually use the API — the strongest proof access is restored.
+    asUser(bobUserId);
+    const nowAllowed = await listMembers();
+    expect(nowAllowed.status).toBe(200);
+
+    // Role change (audit coverage) + removal.
+    asUser("u-owner-1");
+    const patchRes = await patchMember(req({ id: bobMemberId, role: "viewer" }));
+    expect(patchRes.status).toBe(200);
+    await removeMember(req({ id: bobMemberId }));
+    members = (await (await listMembers()).json()).members as Row[];
+    bob = members.find((m) => m.email === "bob@fairway.test")!;
+    expect(bob.isActive).toBe(false);
+    expect(bob.removed).toBe(true);
+
+    // ===== Reactivation goes through the SAME approval gate (confirmed decision) =====
+    const reinviteRes = await createInvitation(req({ email: "bob@fairway.test", role: "admin" }));
+    expect(reinviteRes.status).toBe(200);
+    invitations = (await (await listInvitations()).json()).invitations as Row[];
+    const reactivationInvite = invitations.find((i) => i.email === "bob@fairway.test" && i.status === "pending")!;
+    expect(reactivationInvite).toBeTruthy();
+    members = (await (await listMembers()).json()).members as Row[];
+    bob = members.find((m) => m.email === "bob@fairway.test")!;
+    expect(bob.isActive).toBe(false); // still inactive — reactivation alone grants nothing.
 
     asUser(bobUserId);
-    const oldLinkAttempt = await completeInvitation();
-    expect((await oldLinkAttempt.json()).reactivated).toBe(false); // the revoked invite can no longer admit him — the "old link" is dead.
+    const reCompleteRes = await completeInvitation();
+    expect((await reCompleteRes.json()).status).toBe("awaiting_approval");
+    expect(isBanned(bobAuth())).toBe(true);
 
-    // A cancelled invitation must not be resendable either.
     asUser("u-owner-1");
-    const resendCancelled = await resendInvitation(req({ id: pendingAgain!.id }));
+    const reApproveRes = await approveInvitation(req({ id: reactivationInvite.id }));
+    expect((await reApproveRes.json()).approved).toBe(true);
+    members = (await (await listMembers()).json()).members as Row[];
+    bob = members.find((m) => m.email === "bob@fairway.test")!;
+    expect(bob.isActive).toBe(true);
+    expect(bob.role).toBe("admin"); // the owner's freshly chosen role, applied only now.
+    expect(bob.removed).toBe(false);
+
+    // Permanent deletion, scoped correctly (reused from Round 2 — unaffected by this round's change).
+    await removeMember(req({ id: bobMemberId }));
+    state.accessLog = [];
+    const deleteRes = await deleteMember(req({ id: bobMemberId, confirm: true }));
+    expect((await deleteRes.json()).deleted).toBe(true);
+    // Only workspace_members (the actual deletion) and the audit-log write
+    // itself touch anything — never a business table, which is what keeps
+    // the FK ON DELETE SET NULL guarantee (verified separately against the
+    // migration SQL) reachable at all.
+    expect(state.accessLog.every((a) => a.table === "workspace_members" || a.table === "team_audit_log")).toBe(true);
+
+    // ===== Carol: resend + cancel of a genuinely pending invite, and the old link going dead =====
+    const carolInvite1 = await createInvitation(req({ email: "carol@fairway.test", role: "viewer" }));
+    expect(carolInvite1.status).toBe(200);
+    invitations = (await (await listInvitations()).json()).invitations as Row[];
+    let carolInvite = invitations.find((i) => i.email === "carol@fairway.test" && i.status === "pending")!;
+    const carolUserId = state.authUsers.find((u) => u.email === "carol@fairway.test")!.id;
+
+    const resendRes = await resendInvitation(req({ id: carolInvite.id }));
+    expect((await resendRes.json()).resent).toBe(true);
+
+    const cancelRes = await revokeInvitation(req({ id: carolInvite.id }));
+    expect((await cancelRes.json()).revoked).toBe(true);
+    invitations = (await (await listInvitations()).json()).invitations as Row[];
+    expect(invitations.find((i) => i.id === carolInvite.id)?.status).toBe("revoked");
+
+    // The old link is dead: completing against a cancelled invitation does nothing.
+    asUser(carolUserId);
+    const deadLinkRes = await completeInvitation();
+    expect((await deadLinkRes.json()).status).toBe("none");
+
+    // Cancelled invitations can't be resent either.
+    asUser("u-owner-1");
+    const resendCancelled = await resendInvitation(req({ id: carolInvite.id }));
     expect(resendCancelled.status).toBe(409);
     expect((await resendCancelled.json()).error).toBe("not_pending");
 
-    // --- Permanent deletion -----------------------------------------------------
-    // bob is currently removed (not active) from the remove-again above —
-    // required precondition for members/delete.
-    asUser("u-owner-1");
-    state.accessLog = [];
-    const deleteRes = await deleteMember(req({ id: bobMemberId, confirm: true }));
-    expect(deleteRes.status).toBe(200);
-    const deleteBody = await deleteRes.json();
-    expect(deleteBody.deleted).toBe(true);
-    expect(deleteBody.authDeleted).toBe(true); // bob has no other workspace membership.
-    expect(deleteBody.otherWorkspaceMemberships).toBe(false);
-    // Step 14 (historical data preserved): the FK-level guarantee
-    // (every business table references workspace_members(id) ON DELETE SET
-    // NULL, confirmed separately by reading every migration's FK clauses)
-    // is outside what this fake can model — it has no leads/tasks tables.
-    // What IS verifiable here, at the application layer, is that permanent
-    // deletion touches only workspace_members (+ the auth user) and nothing
-    // else, which is the scoping that makes that FK guarantee reachable at
-    // all: a route that also wrote to other tables could bypass it. Checked
-    // before the next listMembers() call, which itself legitimately touches
-    // gmail_connections/profiles and would otherwise pollute this log.
-    expect(state.accessLog.every((a) => a.table === "workspace_members")).toBe(true);
-    members = (await (await listMembers()).json()).members as Row[];
-    expect(members.some((m) => m.id === bobMemberId)).toBe(false);
-    expect(state.authUsers.some((u) => u.id === bobUserId)).toBe(false);
+    // ===== Carol, round 2: owner REJECTS this time =====
+    const carolInvite2 = await createInvitation(req({ email: "carol@fairway.test", role: "viewer" }));
+    expect(carolInvite2.status).toBe(200);
+    invitations = (await (await listInvitations()).json()).invitations as Row[];
+    carolInvite = invitations.find((i) => i.email === "carol@fairway.test" && i.status === "pending")!;
 
-    // Deleting a member who holds ANOTHER workspace's membership must leave
-    // the auth account alone (it would silently kill that other access).
+    asUser(carolUserId);
+    const carolComplete = await completeInvitation();
+    expect((await carolComplete.json()).status).toBe("awaiting_approval");
+    const carolAuth = () => state.authUsers.find((u) => u.id === carolUserId)!;
+    expect(isBanned(carolAuth())).toBe(true);
+
+    asUser("u-owner-1");
+    const rejectRes = await rejectInvitation(req({ id: carolInvite.id }));
+    expect(rejectRes.status).toBe(200);
+    expect((await rejectRes.json()).rejected).toBe(true);
+
+    invitations = (await (await listInvitations()).json()).invitations as Row[];
+    const rejected = invitations.find((i) => i.id === carolInvite.id)!;
+    expect(rejected.status).toBe("rejected");
+    expect(rejected.rejected_at).toBeTruthy();
+
+    // Rejected: still cannot log in (still banned) or reach any API.
+    expect(isBanned(carolAuth())).toBe(true);
+    const carolStatusAfterReject = await invitationStatus(req({ email: "carol@fairway.test" }));
+    expect((await carolStatusAfterReject.json())).toEqual({ awaitingApproval: false }); // not "awaiting" anymore — but still banned, so login still fails.
+    asUser(carolUserId);
+    const carolApiAfterReject = await listMembers();
+    expect(carolApiAfterReject.status).toBe(403);
+
+    // The B10-round gap is now closed: reject() stamps removed_at on
+    // Carol's workspace_members row, so she lands in Removed Members (not
+    // lost between the Active/Removed/Approval buckets, which is what
+    // happened before this fix — is_active=false and removed_at=null match
+    // nothing) and can be permanently deleted exactly like anyone else
+    // removed, with no separate "rejected" lifecycle needed.
+    asUser("u-owner-1");
+    const membersAfterReject = (await (await listMembers()).json()).members as Row[];
+    const carolMember = membersAfterReject.find((m) => m.email === "carol@fairway.test")!;
+    expect(carolMember.removed).toBe(true);
+    const deleteCarol = await deleteMember(req({ id: carolMember.id as string, confirm: true }));
+    expect(deleteCarol.status).toBe(200);
+    expect((await deleteCarol.json()).deleted).toBe(true);
+
+    // ===== Permanent deletion of a member with another active workspace membership =====
+    asUser("u-owner-1");
     state.authUsers.push({ id: "u-erin", email: "erin@fairway.test", banned_until: null });
     state.tables.workspace_members.push({
       id: "mem-erin-ws1",
@@ -452,24 +508,34 @@ describe("Team Management — 15-step lifecycle (real route handlers, stateful f
     });
     const deleteErin = await deleteMember(req({ id: "mem-erin-ws1", confirm: true }));
     const deleteErinBody = await deleteErin.json();
-    expect(deleteErinBody.deleted).toBe(true);
     expect(deleteErinBody.authDeleted).toBe(false);
     expect(deleteErinBody.otherWorkspaceMemberships).toBe(true);
     expect(state.authUsers.some((u) => u.id === "u-erin")).toBe(true);
 
-    // --- Step 15: rate-limit / API-failure behavior -----------------------------
+    // ===== Rate-limit / API-failure behavior =====
     state.rateLimited = true;
     const invitationsBefore = state.tables.invitations.length;
     const rateLimitedInvite = await createInvitation(req({ email: "dave@fairway.test", role: "viewer" }));
     expect(rateLimitedInvite.status).toBe(429);
-    expect((await rateLimitedInvite.json()).error).toBe("rate_limited");
-    // The invitation row the route inserted before the rate-limited Auth
-    // call must have been rolled back — no orphaned invitation left behind.
-    expect(state.tables.invitations.length).toBe(invitationsBefore);
+    expect(state.tables.invitations.length).toBe(invitationsBefore); // rolled back, nothing orphaned.
     expect(state.authUsers.some((u) => u.email === "dave@fairway.test")).toBe(false);
-
     state.rateLimited = false;
-    const retryInvite = await createInvitation(req({ email: "dave@fairway.test", role: "viewer" }));
-    expect(retryInvite.status).toBe(200);
+    expect((await createInvitation(req({ email: "dave@fairway.test", role: "viewer" }))).status).toBe(200);
+
+    // ===== Audit log contains every expected event =====
+    const actions = new Set((state.tables.team_audit_log).map((r) => r.action));
+    for (const expected of [
+      "invitation_created",
+      "invitation_accepted",
+      "member_approved",
+      "member_rejected",
+      "role_changed",
+      "member_removed",
+      "member_permanently_deleted",
+      "invitation_resent",
+      "invitation_cancelled",
+    ]) {
+      expect(actions.has(expected)).toBe(true);
+    }
   });
 });

@@ -17,9 +17,8 @@
 
 import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
 import { getServiceSupabase } from "@/lib/supabase/server";
-import { canRemoveMember } from "@/lib/team/invites";
-
-const PERMANENT_BAN = "876000h"; // 100 years — supabase-js's own documented "ban forever" value.
+import { canRemoveMember, PERMANENT_BAN } from "@/lib/team/invites";
+import { logTeamEvent } from "@/lib/team/audit";
 
 export async function POST(request: Request): Promise<Response> {
   const result = await requireActor();
@@ -67,5 +66,12 @@ export async function POST(request: Request): Promise<Response> {
     console.error(`Remove: banning auth user ${member.user_id} failed: ${banError.message}`);
   }
 
+  await logTeamEvent(db, {
+    workspaceId,
+    actorMemberId: actingMemberId,
+    targetUserId: member.user_id,
+    action: "member_removed",
+    result: "success",
+  });
   return Response.json({ removed: true, authBanned: !banError });
 }

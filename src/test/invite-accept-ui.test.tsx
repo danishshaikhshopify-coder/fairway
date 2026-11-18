@@ -126,6 +126,22 @@ describe("Invite accept page", () => {
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
   });
 
+  it("shows the awaiting-approval screen instead of redirecting when complete() reports it", async () => {
+    window.history.replaceState({}, "", "/invite/accept?code=abc123");
+    auth.exchangeCodeForSession.mockResolvedValue({ error: null });
+    auth.updateUser.mockResolvedValue({ error: null });
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ status: "awaiting_approval" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AcceptInvitePage />);
+    const passwordInput = await screen.findByLabelText(/^New password/);
+    fireEvent.change(passwordInput, { target: { value: "secret1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set password and continue" }));
+    await waitFor(() =>
+      expect(screen.getByText(/sent to your workspace owner for approval/)).toBeTruthy(),
+    );
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
   it("does not redirect, and surfaces an error, when /api/team/invitations/complete fails", async () => {
     window.history.replaceState({}, "", "/invite/accept?code=abc123");
     auth.exchangeCodeForSession.mockResolvedValue({ error: null });

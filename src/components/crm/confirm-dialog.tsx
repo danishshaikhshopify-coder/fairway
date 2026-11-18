@@ -16,16 +16,19 @@ interface ConfirmDialogProps {
   title: string;
   description: string;
   confirmLabel?: string;
+  confirmVariant?: "destructive" | "default";
   onConfirm: () => void;
 }
 
-/** Destructive-action confirmation; caller owns the open state. */
+/** Action confirmation; caller owns the open state. Defaults to the
+ * destructive style, since most callers confirm a destructive action. */
 export function ConfirmDialog({
   open,
   onOpenChange,
   title,
   description,
   confirmLabel = "Delete",
+  confirmVariant = "destructive",
   onConfirm,
 }: ConfirmDialogProps) {
   return (
@@ -40,7 +43,7 @@ export function ConfirmDialog({
             Cancel
           </Button>
           <Button
-            variant="destructive"
+            variant={confirmVariant}
             onClick={() => {
               onOpenChange(false);
               onConfirm();

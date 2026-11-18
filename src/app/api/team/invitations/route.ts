@@ -29,6 +29,7 @@ import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/a
 import { AppUrlConfigError, getAppUrl } from "@/lib/app-url";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import { EMAIL_RATE_LIMITED_MESSAGE, isEmailRateLimited, validateInviteInput } from "@/lib/team/invites";
+import { logTeamEvent } from "@/lib/team/audit";
 
 export async function GET(): Promise<Response> {
   const result = await requireActor();
@@ -41,13 +42,33 @@ export async function GET(): Promise<Response> {
 
   const { data, error } = await db
     .from("invitations")
-    .select("id, email, role, status, created_at, accepted_at, revoked_at")
+    .select("id, email, role, status, created_at, accepted_at, revoked_at, rejected_at")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) return serverError(error.message);
 
-  return Response.json({ invitations: data ?? [] });
+  const rows = data ?? [];
+  // Full name, for the Approval Requests UI — one listUsers() call and one
+  // batched profiles query, not N+1 per invitation.
+  const { data: authUsers } = await db.auth.admin.listUsers();
+  const emailToUserId = new Map(
+    (authUsers?.users ?? []).map((u) => [(u.email ?? "").toLowerCase(), u.id]),
+  );
+  const userIds = rows
+    .map((row) => emailToUserId.get((row.email as string).toLowerCase()))
+    .filter((id): id is string => Boolean(id));
+  const { data: profileRows } = userIds.length
+    ? await db.from("profiles").select("id, full_name").in("id", userIds)
+    : { data: [] as { id: string; full_name: string }[] };
+  const fullNameByUserId = new Map((profileRows ?? []).map((p) => [p.id, p.full_name]));
+
+  const invitations = rows.map((row) => {
+    const userId = emailToUserId.get((row.email as string).toLowerCase());
+    return { ...row, fullName: (userId && fullNameByUserId.get(userId)) || "" };
+  });
+
+  return Response.json({ invitations });
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -154,6 +175,14 @@ export async function POST(request: Request): Promise<Response> {
         { status: 502 },
       );
     }
+    await logTeamEvent(db, {
+      workspaceId,
+      actorMemberId: memberId,
+      targetEmail: email,
+      action: "invitation_created",
+      newValue: { role: inviteRole },
+      result: "success",
+    });
     return Response.json({ invitation });
   }
 
@@ -173,5 +202,13 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  await logTeamEvent(db, {
+    workspaceId,
+    actorMemberId: memberId,
+    targetEmail: email,
+    action: "invitation_created",
+    newValue: { role: inviteRole },
+    result: "success",
+  });
   return Response.json({ invitation });
 }

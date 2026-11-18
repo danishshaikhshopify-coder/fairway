@@ -18,7 +18,7 @@ import { getSupabase, isLiveMode } from "@/lib/supabase/client";
 
 const MIN_PASSWORD_LENGTH = 6;
 
-type Stage = "exchanging" | "ready" | "error";
+type Stage = "exchanging" | "ready" | "error" | "awaiting-approval";
 
 export default function AcceptInvitePage() {
   const router = useRouter();
@@ -125,12 +125,12 @@ export default function AcceptInvitePage() {
         setFieldError(updateError.message);
         return;
       }
-      // No-op for a brand-new invite (already fully admitted at send time);
-      // this is what actually restores access for a reactivated member — see
-      // /api/team/invitations/complete. A failure here must not be swallowed:
-      // a reactivated member whose is_active flip didn't go through would
-      // otherwise be redirected into a dashboard RLS blocks them from, with
-      // no explanation.
+      // Marks the matching invitation "awaiting_approval" (brand-new invite
+      // or reactivation — same path either way now) instead of granting
+      // access directly: the owner must explicitly approve before
+      // workspace_members.is_active flips true. A failure here must not be
+      // swallowed: landing in the dashboard before that gate ran would hit
+      // an RLS wall with no explanation.
       const completeResponse = await fetch("/api/team/invitations/complete", { method: "POST" }).catch(
         () => null,
       );
@@ -138,6 +138,11 @@ export default function AcceptInvitePage() {
         setFieldError(
           "Your password was set, but we couldn't finish restoring your access. Please refresh this page, or contact your workspace owner if the problem continues.",
         );
+        return;
+      }
+      const completeBody = await completeResponse.json().catch(() => null);
+      if (completeBody?.status === "awaiting_approval") {
+        setStage("awaiting-approval");
         return;
       }
       router.replace("/");
@@ -170,6 +175,13 @@ export default function AcceptInvitePage() {
             >
               {error ?? "This invite link is no longer valid."} Ask your admin to send a new one.
             </div>
+          ) : null}
+
+          {stage === "awaiting-approval" ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Thanks — your password is set. Your request has been sent to your workspace owner
+              for approval. You&rsquo;ll be able to sign in once they approve it.
+            </p>
           ) : null}
 
           {stage === "ready" ? (

@@ -11,6 +11,7 @@ import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/a
 import { AppUrlConfigError, getAppUrl } from "@/lib/app-url";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import { EMAIL_RATE_LIMITED_MESSAGE, isEmailRateLimited } from "@/lib/team/invites";
+import { logTeamEvent } from "@/lib/team/audit";
 
 function resendFailure(error: { code?: string; message: string }): Response {
   if (isEmailRateLimited(error)) {
@@ -22,7 +23,7 @@ function resendFailure(error: { code?: string; message: string }): Response {
 export async function POST(request: Request): Promise<Response> {
   const result = await requireActor();
   if (result.response) return result.response;
-  const { role, workspaceId } = result.actor;
+  const { role, workspaceId, memberId } = result.actor;
   if (!canManageTeam(role)) return forbidden("Only the owner can resend invitations.");
 
   const body = await request.json().catch(() => null);
@@ -73,6 +74,13 @@ export async function POST(request: Request): Promise<Response> {
     if (resendError) {
       return resendFailure(resendError);
     }
+    await logTeamEvent(db, {
+      workspaceId,
+      actorMemberId: memberId,
+      targetEmail: invitation.email as string,
+      action: "invitation_resent",
+      result: "success",
+    });
     return Response.json({ resent: true });
   }
 
@@ -82,5 +90,12 @@ export async function POST(request: Request): Promise<Response> {
   if (inviteError) {
     return resendFailure(inviteError);
   }
+  await logTeamEvent(db, {
+    workspaceId,
+    actorMemberId: memberId,
+    targetEmail: invitation.email as string,
+    action: "invitation_resent",
+    result: "success",
+  });
   return Response.json({ resent: true });
 }

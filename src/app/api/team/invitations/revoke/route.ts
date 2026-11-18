@@ -5,11 +5,12 @@
 
 import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
 import { getServiceSupabase } from "@/lib/supabase/server";
+import { logTeamEvent } from "@/lib/team/audit";
 
 export async function POST(request: Request): Promise<Response> {
   const result = await requireActor();
   if (result.response) return result.response;
-  const { role, workspaceId } = result.actor;
+  const { role, workspaceId, memberId } = result.actor;
   if (!canManageTeam(role)) return forbidden("Only the owner can revoke invitations.");
 
   const body = await request.json().catch(() => null);
@@ -62,5 +63,12 @@ export async function POST(request: Request): Promise<Response> {
       .eq("user_id", matchingUser.id);
   }
 
+  await logTeamEvent(db, {
+    workspaceId,
+    actorMemberId: memberId,
+    targetEmail: invitation.email as string,
+    action: "invitation_cancelled",
+    result: "success",
+  });
   return Response.json({ revoked: true });
 }

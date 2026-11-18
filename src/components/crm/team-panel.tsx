@@ -58,6 +58,24 @@ interface Invitation {
   role: string;
   status: string;
   created_at: string;
+  accepted_at?: string | null;
+  fullName?: string;
+  rejected_at?: string | null;
+}
+
+interface AuditEntry {
+  id: string;
+  actorMemberId: string | null;
+  targetEmail: string | null;
+  targetUserId: string | null;
+  action: string;
+  result: string;
+  createdAt: string;
+}
+
+function humanizeAction(action: string): string {
+  const spaced = action.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 class ApiError extends Error {
@@ -93,6 +111,11 @@ export function TeamPanel() {
   const [removing, setRemoving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [approveTarget, setApproveTarget] = useState<Invitation | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<Invitation | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [reinviteRoles, setReinviteRoles] = useState<Record<string, InvitableRole>>({});
   const [reinvitingId, setReinvitingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
@@ -110,8 +133,12 @@ export function TeamPanel() {
       setLoadError(null);
       try {
         const invitesData = await api<{ invitations: Invitation[] }>("/api/team/invitations");
-        setInvitations(invitesData.invitations.filter((i) => i.status === "pending"));
+        setInvitations(invitesData.invitations);
         setIsOwner(true);
+        const auditData = await api<{ entries: AuditEntry[] }>("/api/team/audit-log").catch(() => ({
+          entries: [],
+        }));
+        setAuditEntries(auditData.entries);
       } catch {
         setIsOwner(false);
       }
@@ -242,6 +269,42 @@ export function TeamPanel() {
     }
   }
 
+  async function approveRequest() {
+    if (!approveTarget) return;
+    setApproving(true);
+    try {
+      await api("/api/team/invitations/approve", {
+        method: "POST",
+        body: JSON.stringify({ id: approveTarget.id }),
+      });
+      toast.success(`Approved ${approveTarget.fullName || approveTarget.email}.`);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not approve that request.");
+    } finally {
+      setApproving(false);
+      setApproveTarget(null);
+    }
+  }
+
+  async function rejectRequest() {
+    if (!rejectTarget) return;
+    setRejecting(true);
+    try {
+      await api("/api/team/invitations/reject", {
+        method: "POST",
+        body: JSON.stringify({ id: rejectTarget.id }),
+      });
+      toast.success(`Rejected ${rejectTarget.fullName || rejectTarget.email}.`);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not reject that request.");
+    } finally {
+      setRejecting(false);
+      setRejectTarget(null);
+    }
+  }
+
   if (!live) {
     return (
       <Card>
@@ -257,7 +320,15 @@ export function TeamPanel() {
     );
   }
 
-  const activeMembers = members.filter((m) => !m.removed);
+  const pendingInvitations = invitations.filter((i) => i.status === "pending");
+  const approvalRequests = invitations.filter((i) => i.status === "awaiting_approval");
+  // An awaiting-approval row is is_active=false/removed=false, same as a
+  // manually-deactivated member — only the matching invitation tells them
+  // apart, so it belongs in Approval requests, never Active members.
+  const awaitingApprovalEmails = new Set(approvalRequests.map((i) => i.email.toLowerCase()));
+  const activeMembers = members.filter(
+    (m) => !m.removed && !awaitingApprovalEmails.has((m.email ?? "").toLowerCase()),
+  );
   const removedMembers = members.filter((m) => m.removed);
 
   return (
@@ -268,7 +339,7 @@ export function TeamPanel() {
         <section aria-label="Team overview">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <KpiCard label="Active" value={activeMembers.length} icon={Users} />
-            <KpiCard label="Pending" value={invitations.length} icon={Mail} />
+            <KpiCard label="Pending" value={pendingInvitations.length} icon={Mail} />
             <KpiCard label="Removed" value={removedMembers.length} icon={UserX} />
           </div>
         </section>
@@ -327,7 +398,7 @@ export function TeamPanel() {
           <CardContent>
             {loading ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Loading invitations…</p>
-            ) : invitations.length > 0 ? (
+            ) : pendingInvitations.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -339,7 +410,7 @@ export function TeamPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invitations.map((inv) => (
+                  {pendingInvitations.map((inv) => (
                     <TableRow key={inv.id}>
                       <TableCell>{inv.email}</TableCell>
                       <TableCell>{ROLES.find((r) => r.value === inv.role)?.label ?? inv.role}</TableCell>
@@ -373,6 +444,65 @@ export function TeamPanel() {
               </Table>
             ) : (
               <EmptyState icon={Mail} title="No pending invitations" />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isOwner ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Approval requests</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Set a password and are waiting on you. No CRM access until you approve them.
+            </p>
+            {loading ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Loading approval requests…</p>
+            ) : approvalRequests.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Full name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Requested role</TableHead>
+                    <TableHead>Invitation date</TableHead>
+                    <TableHead>Acceptance date</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {approvalRequests.map((req) => (
+                    <TableRow key={req.id}>
+                      <TableCell>{req.fullName || "—"}</TableCell>
+                      <TableCell>{req.email}</TableCell>
+                      <TableCell>{ROLES.find((r) => r.value === req.role)?.label ?? req.role}</TableCell>
+                      <TableCell>{new Date(req.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {req.accepted_at ? new Date(req.accepted_at).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell className="space-x-1 text-right">
+                        <Button variant="outline" size="sm" onClick={() => setApproveTarget(req)}>
+                          <UserCheck className="size-4" aria-hidden="true" />
+                          Approve
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setRejectTarget(req)}
+                        >
+                          <UserX className="size-4" aria-hidden="true" />
+                          Reject
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <EmptyState icon={UserCheck} title="No approval requests" />
             )}
           </CardContent>
         </Card>
@@ -525,7 +655,9 @@ export function TeamPanel() {
                   <TableBody>
                     {removedMembers.map((m) => {
                       const pending = invitations.some(
-                        (inv) => inv.email.toLowerCase() === (m.email ?? "").toLowerCase(),
+                        (inv) =>
+                          inv.email.toLowerCase() === (m.email ?? "").toLowerCase() &&
+                          (inv.status === "pending" || inv.status === "awaiting_approval"),
                       );
                       return (
                         <TableRow key={m.id}>
@@ -599,6 +731,81 @@ export function TeamPanel() {
           </CardContent>
         </Card>
       ) : null}
+
+      {isOwner ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity log</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {auditEntries.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Actor</TableHead>
+                    <TableHead>Target</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Result</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {auditEntries.map((entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>{entry.actorMemberId ?? "—"}</TableCell>
+                      <TableCell>{entry.targetEmail ?? entry.targetUserId ?? "—"}</TableCell>
+                      <TableCell>{humanizeAction(entry.action)}</TableCell>
+                      <TableCell>
+                        <Badge variant={entry.result === "success" ? "default" : "outline"}>
+                          {entry.result === "success" ? "Success" : "Failure"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <EmptyState icon={Users} title="No activity yet" />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <ConfirmDialog
+        open={approveTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !approving) setApproveTarget(null);
+        }}
+        title="Approve this request?"
+        description={
+          approveTarget
+            ? `${approveTarget.fullName || approveTarget.email} will become an active member with the ${
+                ROLES.find((r) => r.value === approveTarget.role)?.label ?? approveTarget.role
+              } role and can sign in immediately.`
+            : ""
+        }
+        confirmLabel="Approve"
+        confirmVariant="default"
+        onConfirm={approveRequest}
+      />
+
+      <ConfirmDialog
+        open={rejectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !rejecting) setRejectTarget(null);
+        }}
+        title="Reject this request?"
+        description={
+          rejectTarget
+            ? `${rejectTarget.fullName || rejectTarget.email} will not be granted access. This cannot be undone from this screen — you'd need to send a new invitation.`
+            : ""
+        }
+        confirmLabel="Reject"
+        onConfirm={rejectRequest}
+      />
 
       <ConfirmDialog
         open={removeTarget !== null}

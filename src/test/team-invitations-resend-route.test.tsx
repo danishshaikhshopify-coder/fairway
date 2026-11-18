@@ -11,6 +11,7 @@ vi.mock("@/lib/app-url", () => ({
   getAppUrl: () => "https://fairway-crm-one.vercel.app",
   AppUrlConfigError: class AppUrlConfigError extends Error {},
 }));
+vi.mock("@/lib/team/audit", () => ({ logTeamEvent: vi.fn(async () => undefined) }));
 
 import { POST as resendInvite } from "@/app/api/team/invitations/resend/route";
 

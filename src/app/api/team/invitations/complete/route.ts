@@ -1,23 +1,22 @@
 // Runs right after /invite/accept establishes a session and the partner
-// sets a new password. For a brand-new invite this is a no-op: the invite
-// already got them a workspace_members row and flipped the invitation to
-// 'accepted' at send time via handle_new_user() (see the parent route).
-// It only does real work for a REACTIVATION (see
-// POST /api/team/invitations' "re-inviting a REMOVED member" comment):
-// that path leaves workspace_members.is_active = false on purpose — the
-// owner's freshly chosen role only takes effect once the member has
-// actually completed fresh authentication, which is exactly what calling
-// this, right after updateUser({password}) succeeds, proves happened.
+// sets a new password — for BOTH a brand-new invite and a reactivation
+// (re-inviting a removed member). Neither path grants active access here
+// anymore: the owner must explicitly approve first (see ../approve and
+// ../reject). This only moves the matching invitation from 'pending' to
+// 'awaiting_approval' and bans the auth account so they cannot sign in in
+// the meantime — workspace_members.is_active stays false until the owner
+// acts. See ../approve/route.ts for what actually flips it.
 //
-// No owner/actor gate here on purpose: the caller is mid-reactivation and
+// No owner/actor gate here on purpose: the caller is mid-registration and
 // therefore NOT an active member yet (requireActor() would 403 them). Their
 // own session (via getUser(), not a cookie sniff) is the only identity that
-// matters — it decides nothing beyond "finish admitting this already-
-// authenticated person into the pending invite that names their email."
+// matters — it decides nothing beyond "mark this already-authenticated
+// person's invitation as awaiting approval."
 
 import { getServerSupabase, getServiceSupabase } from "@/lib/supabase/server";
 import { serverError } from "@/lib/api/auth";
-import { normaliseEmail } from "@/lib/team/invites";
+import { normaliseEmail, PERMANENT_BAN } from "@/lib/team/invites";
+import { logTeamEvent } from "@/lib/team/audit";
 
 export async function POST(): Promise<Response> {
   const db = await getServerSupabase();
@@ -38,10 +37,9 @@ export async function POST(): Promise<Response> {
 
   // The pending-invite uniqueness constraint is per-workspace, not global,
   // so the same email can hold a live pending invite in more than one
-  // workspace at once. Picking only the single most-recent one (the old
-  // `.limit(1)`) could pick the wrong workspace and silently fail to
-  // reactivate the right membership. Check every pending invite for this
-  // email and reactivate whichever one actually matches a deactivated row.
+  // workspace at once. Picking only the single most-recent one could pick
+  // the wrong workspace. Check every pending invite for this email and act
+  // on whichever one actually matches a (not-yet-active) membership row.
   const { data: invitations, error: invitationError } = await service
     .from("invitations")
     .select("id, workspace_id, role")
@@ -49,7 +47,7 @@ export async function POST(): Promise<Response> {
     .eq("status", "pending")
     .order("created_at", { ascending: false });
   if (invitationError) return serverError(invitationError.message);
-  if (!invitations || invitations.length === 0) return Response.json({ reactivated: false });
+  if (!invitations || invitations.length === 0) return Response.json({ status: "none" });
 
   for (const invitation of invitations) {
     const { data: member, error: memberError } = await service
@@ -61,19 +59,31 @@ export async function POST(): Promise<Response> {
     if (memberError) return serverError(memberError.message);
     if (!member || member.is_active) continue;
 
-    const { error: reactivateError } = await service
-      .from("workspace_members")
-      .update({ is_active: true, role: invitation.role, removed_at: null })
-      .eq("id", member.id);
-    if (reactivateError) return serverError(reactivateError.message);
-
-    await service
+    const { error: awaitingError } = await service
       .from("invitations")
-      .update({ status: "accepted", accepted_at: new Date().toISOString() })
+      .update({ status: "awaiting_approval", accepted_at: new Date().toISOString() })
       .eq("id", invitation.id);
+    if (awaitingError) return serverError(awaitingError.message);
 
-    return Response.json({ reactivated: true });
+    const { error: banError } = await service.auth.admin.updateUserById(userData.user.id, {
+      ban_duration: PERMANENT_BAN,
+    });
+    if (banError) {
+      // Not fatal — is_active stays false, which already blocks every
+      // RLS-gated query — but it must not fail silently.
+      console.error(`Complete: banning auth user ${userData.user.id} failed: ${banError.message}`);
+    }
+
+    await logTeamEvent(service, {
+      workspaceId: invitation.workspace_id,
+      targetEmail: userData.user.email,
+      targetUserId: userData.user.id,
+      action: "invitation_accepted",
+      result: "success",
+    });
+
+    return Response.json({ status: "awaiting_approval" });
   }
 
-  return Response.json({ reactivated: false });
+  return Response.json({ status: "none" });
 }

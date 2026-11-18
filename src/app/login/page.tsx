@@ -55,9 +55,23 @@ function authErrorMessage(error: { code?: string; message: string }): string {
       return "Too many attempts. Wait a moment and try again.";
     case "signup_disabled":
       return "Sign-ups are turned off on this project.";
+    case "user_banned":
+      return "Your account cannot sign in right now. Contact your workspace owner.";
     default:
       return error.message || "Something went wrong. Try again.";
   }
+}
+
+/** Best-effort audit entry; must never throw or delay the login flow. */
+function reportLoginEvent(
+  email: string,
+  outcome: "login_success" | "login_failure" | "login_blocked_pending_approval",
+): void {
+  fetch("/api/team/login-event", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, outcome }),
+  }).catch(() => {});
 }
 
 /**
@@ -101,14 +115,42 @@ export default function LoginPage() {
 
     setBusy(true);
     try {
+      const trimmedEmail = email.trim();
       const { error } = await db.auth.signInWithPassword({
-        email: email.trim(),
+        email: trimmedEmail,
         password,
       });
       if (error) {
+        // A banned account covers both "removed" and "awaiting owner
+        // approval" — ask which, so a pending approval gets its own message
+        // instead of the generic banned one. Never let this lookup block
+        // showing SOME error message.
+        if (error.code === "user_banned") {
+          let message = authErrorMessage(error);
+          let outcome: "login_failure" | "login_blocked_pending_approval" = "login_failure";
+          try {
+            const statusResponse = await fetch("/api/team/invitations/status", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ email: trimmedEmail }),
+            });
+            const statusBody = await statusResponse.json().catch(() => null);
+            if (statusResponse.ok && statusBody?.awaitingApproval) {
+              message = "Your account is awaiting workspace owner approval.";
+              outcome = "login_blocked_pending_approval";
+            }
+          } catch {
+            // keep the generic banned-account message
+          }
+          setFormError(message);
+          reportLoginEvent(trimmedEmail, outcome);
+          return;
+        }
         setFormError(authErrorMessage(error));
+        reportLoginEvent(trimmedEmail, "login_failure");
         return;
       }
+      reportLoginEvent(trimmedEmail, "login_success");
       // The cookie is already written; the proxy lets the next request
       // through and AuthProvider picks the session up on navigation.
       router.replace(safeReturnPath());
