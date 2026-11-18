@@ -109,6 +109,8 @@ describe("Invite accept page", () => {
     window.history.replaceState({}, "", "/invite/accept?code=abc123");
     auth.exchangeCodeForSession.mockResolvedValue({ error: null });
     auth.updateUser.mockResolvedValue({ error: null });
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ reactivated: false }) }));
+    vi.stubGlobal("fetch", fetchMock);
     render(<AcceptInvitePage />);
     const passwordInput = await screen.findByLabelText(/^New password/);
     fireEvent.change(passwordInput, { target: { value: "secret1" } });
@@ -116,6 +118,31 @@ describe("Invite accept page", () => {
     await waitFor(() =>
       expect(auth.updateUser).toHaveBeenCalledWith({ password: "secret1" }),
     );
+    // Finishes a reactivation (a no-op for a brand-new invite) before landing
+    // in the app — this is what actually restores a removed member's access.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/api/team/invitations/complete", { method: "POST" }),
+    );
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
+  });
+
+  it("does not redirect, and surfaces an error, when /api/team/invitations/complete fails", async () => {
+    window.history.replaceState({}, "", "/invite/accept?code=abc123");
+    auth.exchangeCodeForSession.mockResolvedValue({ error: null });
+    auth.updateUser.mockResolvedValue({ error: null });
+    // A reactivated member's is_active flip happens in this call (see the
+    // route's own header comment) — if it fails, redirecting anyway would
+    // drop them into a dashboard RLS blocks them from, with no explanation.
+    const fetchMock = vi.fn(async () => ({ ok: false, json: async () => ({}) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AcceptInvitePage />);
+    const passwordInput = await screen.findByLabelText(/^New password/);
+    fireEvent.change(passwordInput, { target: { value: "secret1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set password and continue" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("couldn't finish restoring your access"),
+    );
+    expect(router.replace).not.toHaveBeenCalled();
   });
 });

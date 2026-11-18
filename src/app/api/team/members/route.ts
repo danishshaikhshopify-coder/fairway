@@ -17,6 +17,7 @@ interface MemberRow {
   user_id: string;
   role: string;
   is_active: boolean;
+  removed_at: string | null;
   created_at: string;
   profiles: { full_name: string; daily_digest: boolean; overdue_reminders: boolean } | null;
 }
@@ -29,7 +30,7 @@ export async function GET(): Promise<Response> {
   const { data, error } = await db
     .from("workspace_members")
     .select(
-      "id, user_id, role, is_active, created_at, profiles!workspace_members_user_id_fkey(full_name, daily_digest, overdue_reminders)",
+      "id, user_id, role, is_active, removed_at, created_at, profiles!workspace_members_user_id_fkey(full_name, daily_digest, overdue_reminders)",
     )
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true });
@@ -58,7 +59,10 @@ export async function GET(): Promise<Response> {
     const gmail = gmailByMember.get(row.id);
     // Remove (POST /api/team/members/remove) bans the Supabase Auth account on
     // top of deactivating; a plain Deactivate toggle never sets banned_until.
-    // Surfacing it lets the UI tell "removed" apart from "just deactivated".
+    // removed_at (not the ban) is what decides which roster section a row
+    // belongs in — re-inviting a removed member has to lift the ban before
+    // the fresh-auth step can succeed, which would make `banned` flip back to
+    // false well before the member is actually reactivated.
     const banned = Boolean(authUser?.banned_until) && new Date(authUser!.banned_until!) > new Date();
     return {
       id: row.id,
@@ -66,6 +70,8 @@ export async function GET(): Promise<Response> {
       fullName: row.profiles?.full_name ?? "",
       role: row.role,
       isActive: row.is_active,
+      removed: row.removed_at !== null,
+      removedAt: row.removed_at,
       banned,
       receivesReminders: Boolean(row.profiles?.daily_digest && row.profiles?.overdue_reminders),
       gmailConnected: Boolean(gmail?.connected_at),
@@ -115,7 +121,14 @@ export async function POST(request: Request): Promise<Response> {
   if (patch.role !== undefined || patch.isActive !== undefined) {
     const memberPatch: Record<string, unknown> = {};
     if (patch.role !== undefined) memberPatch.role = patch.role;
-    if (patch.isActive !== undefined) memberPatch.is_active = patch.isActive;
+    if (patch.isActive !== undefined) {
+      memberPatch.is_active = patch.isActive;
+      // This toggle is for a plain deactivate/reactivate, never for undoing a
+      // full Remove (that row no longer has a switch in the UI) — but clear
+      // removed_at defensively so an unexpected call can't leave a reactivated
+      // row stuck showing in the Removed Members section.
+      if (patch.isActive) memberPatch.removed_at = null;
+    }
     const { error } = await db.from("workspace_members").update(memberPatch).eq("id", id);
     if (error) return serverError(error.message);
   }

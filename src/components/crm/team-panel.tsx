@@ -9,12 +9,14 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Mail, Trash2 } from "lucide-react";
+import { Mail, RotateCw, Trash2, UserCheck, UserX, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import { EmptyState } from "@/components/crm/empty-state";
+import { KpiCard } from "@/components/crm/kpi-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
@@ -42,6 +44,8 @@ interface Member {
   fullName: string;
   role: string;
   isActive: boolean;
+  removed: boolean;
+  removedAt: string | null;
   banned: boolean;
   receivesReminders: boolean;
   gmailConnected: boolean;
@@ -79,12 +83,18 @@ export function TeamPanel() {
   const [inviting, setInviting] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [reinviteRoles, setReinviteRoles] = useState<Record<string, InvitableRole>>({});
+  const [reinvitingId, setReinvitingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     try {
       const membersData = await api<{ members: Member[] }>("/api/team/members");
       setMembers(membersData.members);
+      setLoadError(null);
       try {
         const invitesData = await api<{ invitations: Invitation[] }>("/api/team/invitations");
         setInvitations(invitesData.invitations.filter((i) => i.status === "pending"));
@@ -93,7 +103,9 @@ export function TeamPanel() {
         setIsOwner(false);
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not load the team.");
+      const message = error instanceof Error ? error.message : "Could not load the team.";
+      toast.error(message);
+      setLoadError(message);
     } finally {
       setLoading(false);
     }
@@ -123,12 +135,27 @@ export function TeamPanel() {
   }
 
   async function revokeInvite(id: string, email: string) {
+    setRevokingId(id);
     try {
       await api("/api/team/invitations/revoke", { method: "POST", body: JSON.stringify({ id }) });
       toast.success(`Revoked the invite for ${email}.`);
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not revoke the invite.");
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
+  async function resendInvite(id: string, email: string) {
+    setResendingId(id);
+    try {
+      await api("/api/team/invitations/resend", { method: "POST", body: JSON.stringify({ id }) });
+      toast.success(`Resent the invite to ${email}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not resend the invite.");
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -138,6 +165,23 @@ export function TeamPanel() {
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update that member.");
+    }
+  }
+
+  async function reinvite(member: Member) {
+    const role = reinviteRoles[member.id] ?? "sales_rep";
+    setReinvitingId(member.id);
+    try {
+      await api("/api/team/invitations", {
+        method: "POST",
+        body: JSON.stringify({ email: member.email, role }),
+      });
+      toast.success(`Sent a new invitation to ${member.email}.`);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not re-invite that person.");
+    } finally {
+      setReinvitingId(null);
     }
   }
 
@@ -174,8 +218,23 @@ export function TeamPanel() {
     );
   }
 
+  const activeMembers = members.filter((m) => !m.removed);
+  const removedMembers = members.filter((m) => m.removed);
+
   return (
     <div className="space-y-6">
+      {loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
+
+      {isOwner ? (
+        <section aria-label="Team overview">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KpiCard label="Active" value={activeMembers.length} icon={Users} />
+            <KpiCard label="Pending" value={invitations.length} icon={Mail} />
+            <KpiCard label="Removed" value={removedMembers.length} icon={UserX} />
+          </div>
+        </section>
+      ) : null}
+
       {isOwner ? (
         <Card>
           <CardHeader>
@@ -217,14 +276,26 @@ export function TeamPanel() {
                 Send invite
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
-            {invitations.length > 0 ? (
+      {isOwner ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pending invitations</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Loading invitations…</p>
+            ) : invitations.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
-                    <TableHead>Sent</TableHead>
+                    <TableHead>Invitation date</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
@@ -235,48 +306,63 @@ export function TeamPanel() {
                       <TableCell>{ROLES.find((r) => r.value === inv.role)?.label ?? inv.role}</TableCell>
                       <TableCell>{new Date(inv.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>
+                        <Badge variant="outline">Pending</Badge>
+                      </TableCell>
+                      <TableCell className="space-x-1 text-right">
                         <Button
                           variant="ghost"
                           size="sm"
+                          disabled={resendingId === inv.id}
+                          onClick={() => resendInvite(inv.id, inv.email)}
+                        >
+                          <RotateCw className="size-4" aria-hidden="true" />
+                          Resend
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={revokingId === inv.id}
                           onClick={() => revokeInvite(inv.id, inv.email)}
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
-                          Revoke
+                          Cancel
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            ) : null}
+            ) : (
+              <EmptyState icon={Mail} title="No pending invitations" />
+            )}
           </CardContent>
         </Card>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Members</CardTitle>
+          <CardTitle>Active members</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead>Member</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Active</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Reminder emails</TableHead>
                 <TableHead>Gmail</TableHead>
-                {isOwner ? <TableHead /> : null}
+                {isOwner ? <TableHead>Actions</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((m) => (
+              {activeMembers.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell>{m.fullName || "—"}</TableCell>
                   <TableCell>{m.email ?? "—"}</TableCell>
                   <TableCell>
-                    {isOwner && m.role !== "owner" && !m.banned ? (
+                    {isOwner && m.role !== "owner" ? (
                       <Select
                         value={m.role}
                         onValueChange={(v) => patchMember(m.id, { role: v })}
@@ -301,8 +387,6 @@ export function TeamPanel() {
                   <TableCell>
                     {m.role === "owner" ? (
                       <Badge>Active</Badge>
-                    ) : m.banned ? (
-                      <Badge variant="outline">Removed</Badge>
                     ) : isOwner ? (
                       <Switch
                         checked={m.isActive}
@@ -315,7 +399,7 @@ export function TeamPanel() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {isOwner && m.role !== "owner" && !m.banned ? (
+                    {isOwner && m.role !== "owner" ? (
                       <Checkbox
                         checked={m.receivesReminders}
                         onCheckedChange={(checked) =>
@@ -339,7 +423,7 @@ export function TeamPanel() {
                   </TableCell>
                   {isOwner ? (
                     <TableCell>
-                      {m.role !== "owner" && !m.banned ? (
+                      {m.role !== "owner" ? (
                         <Button variant="ghost" size="sm" onClick={() => setRemoveTarget(m)}>
                           <Trash2 className="size-4" aria-hidden="true" />
                           Remove
@@ -349,7 +433,13 @@ export function TeamPanel() {
                   ) : null}
                 </TableRow>
               ))}
-              {!loading && members.length === 0 ? (
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={isOwner ? 7 : 6} className="text-center text-sm text-muted-foreground">
+                    Loading members…
+                  </TableCell>
+                </TableRow>
+              ) : !loadError && activeMembers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={isOwner ? 7 : 6} className="text-center text-sm text-muted-foreground">
                     No members yet.
@@ -366,6 +456,99 @@ export function TeamPanel() {
           ) : null}
         </CardContent>
       </Card>
+
+      {isOwner ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Removed members</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Loading removed members…</p>
+            ) : removedMembers.length > 0 ? (
+              <>
+                <p className="mb-4 text-xs text-muted-foreground">
+                  Removed access, but past leads, tasks and activities are kept. Re-inviting sends
+                  a fresh sign-in link — their old password no longer works, and you choose their
+                  role again; it is never restored automatically.
+                </p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Previous role</TableHead>
+                      <TableHead>Removed</TableHead>
+                      <TableHead>New role</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {removedMembers.map((m) => {
+                      const pending = invitations.some(
+                        (inv) => inv.email.toLowerCase() === (m.email ?? "").toLowerCase(),
+                      );
+                      return (
+                        <TableRow key={m.id}>
+                          <TableCell>{m.fullName || "—"}</TableCell>
+                          <TableCell>{m.email ?? "—"}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {ROLES.find((r) => r.value === m.role)?.label ?? m.role}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {m.removedAt ? new Date(m.removedAt).toLocaleDateString() : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={reinviteRoles[m.id] ?? "sales_rep"}
+                              onValueChange={(v) =>
+                                setReinviteRoles((prev) => ({ ...prev, [m.id]: v as InvitableRole }))
+                              }
+                            >
+                              <SelectTrigger className="w-36">
+                                {
+                                  ROLES.find((r) => r.value === (reinviteRoles[m.id] ?? "sales_rep"))
+                                    ?.label
+                                }
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ROLES.map((r) => (
+                                  <SelectItem key={r.value} value={r.value}>
+                                    {r.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            {pending ? (
+                              <span className="text-sm text-muted-foreground">Invitation sent</span>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={reinvitingId === m.id}
+                                onClick={() => reinvite(m)}
+                              >
+                                <Mail className="size-4" aria-hidden="true" />
+                                Re-invite
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </>
+            ) : (
+              <EmptyState icon={UserCheck} title="No removed members" />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <ConfirmDialog
         open={removeTarget !== null}

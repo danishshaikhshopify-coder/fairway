@@ -31,6 +31,16 @@ export async function POST(request: Request): Promise<Response> {
   if (!invitation) {
     return Response.json({ error: "not_found", message: "Invitation not found." }, { status: 404 });
   }
+  // An already-accepted invitation must never reach the deactivation step
+  // below — that would silently deactivate a now-active member outside the
+  // real Remove flow (no removed_at, no ban) and corrupt the invitation's
+  // own history. Mirrors the same guard on resend.
+  if (invitation.status !== "pending") {
+    return Response.json(
+      { error: "not_pending", message: "Only a pending invitation can be revoked." },
+      { status: 409 },
+    );
+  }
 
   const { error: updateError } = await db
     .from("invitations")

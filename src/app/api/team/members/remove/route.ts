@@ -53,7 +53,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const { error: updateError } = await db
     .from("workspace_members")
-    .update({ is_active: false })
+    .update({ is_active: false, removed_at: new Date().toISOString() })
     .eq("id", id);
   if (updateError) return serverError(updateError.message);
 

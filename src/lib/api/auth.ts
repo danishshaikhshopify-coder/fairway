@@ -51,6 +51,12 @@ export async function requireActor(): Promise<ActorResult> {
     .from("workspace_members")
     .select("id, workspace_id, role")
     .eq("user_id", userData.user.id)
+    // A deactivated or removed row must never resolve an actor here, even if
+    // the Auth ban that normally accompanies removal failed (removal treats
+    // banning as best-effort) — otherwise the caller keeps their stale role
+    // on every requireActor()-gated route indefinitely, bypassing the
+    // is_active check RLS already enforces on tenant tables.
+    .eq("is_active", true)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();

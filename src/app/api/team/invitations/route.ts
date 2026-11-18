@@ -9,7 +9,22 @@
 // into — see the B7 migration). Supabase emails the partner a sign-in link;
 // there is no separate "signup" step for them to complete beyond setting a
 // password at /invite/accept.
+//
+// Re-inviting a REMOVED member (workspace_members.removed_at set, Auth
+// account banned — see members/remove/route.ts) is a different Auth call:
+// inviteUserByEmail() creates a user, and this one already exists, so it
+// always fails for them. Instead this rotates their password to a value no
+// one is ever given (killing the old credential outright — "fresh
+// authentication"), lifts the ban so the reset link below can establish a
+// session, and sends a password-reset email to the same /invite/accept
+// redirect, which already handles any Supabase callback shape regardless of
+// what sent it. workspace_members stays is_active = false — access is not
+// restored until POST /api/team/invitations/complete runs, right after they
+// set a new password, which is also where the owner's freshly chosen role
+// actually takes effect. See that route for why "banned" cannot be the
+// signal a reactivation is pending.
 
+import { randomUUID } from "node:crypto";
 import { canManageTeam, forbidden, requireActor, serverError } from "@/lib/api/auth";
 import { AppUrlConfigError, getAppUrl } from "@/lib/app-url";
 import { getServiceSupabase } from "@/lib/supabase/server";
@@ -51,12 +66,14 @@ export async function POST(request: Request): Promise<Response> {
 
   // inviteUserByEmail() errors on an email Supabase Auth already knows about
   // (any workspace, since auth.users is global) — but with a generic GoTrue
-  // message. Check first so a re-invite of an existing/removed member gets a
-  // clear, specific reason instead of a raw upstream error.
+  // message. Check first so re-inviting an existing/removed member gets a
+  // clear, specific reason, or the reactivation path, instead of a raw
+  // upstream error.
   const { data: existingAuthUsers } = await db.auth.admin.listUsers();
   const existingUser = existingAuthUsers?.users.find(
     (u) => (u.email ?? "").toLowerCase() === email.toLowerCase(),
   );
+  let reactivatingUserId: string | null = null;
   if (existingUser) {
     const { data: existingMember } = await db
       .from("workspace_members")
@@ -64,12 +81,22 @@ export async function POST(request: Request): Promise<Response> {
       .eq("workspace_id", workspaceId)
       .eq("user_id", existingUser.id)
       .maybeSingle();
-    const message = existingMember
-      ? existingMember.is_active
-        ? "This person is already a member of this workspace."
-        : "This person was removed from this workspace and cannot be re-invited."
-      : "This email already has a Supabase account outside this workspace and cannot be invited.";
-    return Response.json({ error: "already_member", message }, { status: 409 });
+    if (!existingMember) {
+      return Response.json(
+        {
+          error: "already_member",
+          message: "This email already has a Supabase account outside this workspace and cannot be invited.",
+        },
+        { status: 409 },
+      );
+    }
+    if (existingMember.is_active) {
+      return Response.json(
+        { error: "already_member", message: "This person is already a member of this workspace." },
+        { status: 409 },
+      );
+    }
+    reactivatingUserId = existingUser.id;
   }
 
   const { data: invitation, error: insertError } = await db
@@ -97,6 +124,34 @@ export async function POST(request: Request): Promise<Response> {
         ? error.message
         : "Application URL is not configured.",
     );
+  }
+
+  if (reactivatingUserId) {
+    // Kill the old password outright (no one is ever given this value) and
+    // lift the ban so the reset link can establish a session. is_active
+    // stays false — see the route header comment.
+    const { error: resetAccessError } = await db.auth.admin.updateUserById(reactivatingUserId, {
+      password: `${randomUUID()}${randomUUID()}`,
+      ban_duration: "none",
+    });
+    if (resetAccessError) {
+      await db.from("invitations").delete().eq("id", invitation.id);
+      return Response.json(
+        { error: "invite_failed", message: resetAccessError.message },
+        { status: 502 },
+      );
+    }
+    const { error: resetEmailError } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/invite/accept`,
+    });
+    if (resetEmailError) {
+      await db.from("invitations").delete().eq("id", invitation.id);
+      return Response.json(
+        { error: "invite_failed", message: resetEmailError.message },
+        { status: 502 },
+      );
+    }
+    return Response.json({ invitation });
   }
 
   const { error: inviteError } = await db.auth.admin.inviteUserByEmail(email, {

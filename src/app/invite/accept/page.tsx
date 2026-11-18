@@ -125,6 +125,21 @@ export default function AcceptInvitePage() {
         setFieldError(updateError.message);
         return;
       }
+      // No-op for a brand-new invite (already fully admitted at send time);
+      // this is what actually restores access for a reactivated member — see
+      // /api/team/invitations/complete. A failure here must not be swallowed:
+      // a reactivated member whose is_active flip didn't go through would
+      // otherwise be redirected into a dashboard RLS blocks them from, with
+      // no explanation.
+      const completeResponse = await fetch("/api/team/invitations/complete", { method: "POST" }).catch(
+        () => null,
+      );
+      if (!completeResponse || !completeResponse.ok) {
+        setFieldError(
+          "Your password was set, but we couldn't finish restoring your access. Please refresh this page, or contact your workspace owner if the problem continues.",
+        );
+        return;
+      }
       router.replace("/");
     } finally {
       setBusy(false);
